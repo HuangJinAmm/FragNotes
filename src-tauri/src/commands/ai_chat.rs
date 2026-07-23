@@ -5,12 +5,36 @@ use crate::ai::sse::read_sse_stream;
 use crate::ai::tools::{execute_tool, tool_definitions};
 use crate::error::{IpcError, IpcResult};
 use crate::state::AppState;
+use memos_core::skill::Skill;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
 use tauri::{AppHandle, Emitter, Manager};
+
+/// 构建注入系统提示的 skill 元数据段
+fn build_skill_metadata_section(enabled_skills: &[Skill]) -> String {
+    if enabled_skills.is_empty() {
+        return String::new();
+    }
+    let lines: Vec<String> = enabled_skills
+        .iter()
+        .map(|s| {
+            format!(
+                "- id: {} | {} | 关联工具: [{}]",
+                s.id,
+                s.description,
+                s.tools.join(", ")
+            )
+        })
+        .collect();
+    format!(
+        "\n\n## 可用 Skills\n以下 skill 提供工具使用指南。在调用关联工具前，\
+         若不确定参数或流程，请先用 load_skill(skill_id) 加载完整指南：\n{}",
+        lines.join("\n")
+    )
+}
 
 /// 全局 run_id 计数器
 static RUN_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
@@ -77,7 +101,7 @@ const SYSTEM_PROMPT: &str = "你是 LocalFragNote 的 AI 助手，帮助用户�
 创建/更新 memo 前不需要确认，直接执行并告知用户。
 当用户要求生成复习卡片时，先用 get_memo/list_memos_by_tag 读取笔记内容，再调用 create_review_cards 持久化。";
 
-const MAX_AGENT_ROUNDS: u32 = 5;
+const MAX_AGENT_ROUNDS: u32 = 200;
 
 /// 启动 AI 聊天，立即返回 run_id，流式通过 events 推送
 #[tauri::command]
@@ -131,8 +155,16 @@ fn agent_loop(
         .map(|m| serde_json::to_value(m).unwrap_or(Value::Null))
         .collect();
 
-    // 首轮注入 system prompt
-    let system_msg = json!({"role": "system", "content": SYSTEM_PROMPT});
+    // 首轮注入 system prompt（含 skill 元数据）
+    // 加载 enabled skills 元数据，拼接进系统提示
+    let builtin = state.builtin_skills.clone();
+    let skill_section = {
+        let store = state.store();
+        memos_core::skill::list_enabled(&builtin, &store).unwrap_or_default()
+    };
+    let skill_metadata = build_skill_metadata_section(&skill_section);
+    let system_content = format!("{}{}", SYSTEM_PROMPT, skill_metadata);
+    let system_msg = json!({"role": "system", "content": system_content});
 
     for _round in 0..MAX_AGENT_ROUNDS {
         if abort_flag.load(Ordering::SeqCst) || state.shutdown.load(Ordering::SeqCst) {
