@@ -32,7 +32,10 @@
     "rename": "Rename",
     "delete": "Delete",
     "confirmDeleteSession": "Delete this session? All messages will be removed.",
-    "messageCount": "{{count}} messages"
+    "messageCount": "{{count}} messages",
+    "skill": {
+      "loaded": "Loaded Skill: {{name}}"
+    }
   },
   "lan": {
     "discovery": {

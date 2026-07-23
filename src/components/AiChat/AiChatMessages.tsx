@@ -1,6 +1,8 @@
 import { BotIcon, UserIcon } from "lucide-react";
 import { useEffect, useRef } from "react";
+import ReactMarkdown from "react-markdown";
 import { MemoMarkdownRenderer } from "@/components/MemoContent/MemoMarkdownRenderer";
+import { useTranslate } from "@/utils/i18n";
 import { cn } from "@/lib/utils";
 import type { ChatMessage, ContentPart } from "./types";
 
@@ -10,6 +12,7 @@ interface AiChatMessagesProps {
 
 export function AiChatMessages({ messages }: AiChatMessagesProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const t = useTranslate();
 
   // 自动滚动到底部
   useEffect(() => {
@@ -58,6 +61,25 @@ export function AiChatMessages({ messages }: AiChatMessagesProps) {
     <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-2 space-y-3">
       {messages.map((msg) => {
         if (msg.role === "tool") {
+          if (msg.toolName === "load_skill") {
+            const result = msg.toolResult as { id?: string; name?: string; body?: string; error?: string } | null;
+            return (
+              <div key={msg.id} className="my-1 rounded border border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950/30 p-2 text-xs">
+                <details>
+                  <summary className="cursor-pointer font-medium text-blue-700 dark:text-blue-300">
+                    📖 {t("aiChat.skill.loaded", { name: result?.name ?? "skill" })}
+                  </summary>
+                  <div className="mt-2 prose prose-sm dark:prose-invert max-w-none">
+                    {result?.error ? (
+                      <p className="text-red-600">{result.error}</p>
+                    ) : (
+                      <ReactMarkdown>{result?.body ?? ""}</ReactMarkdown>
+                    )}
+                  </div>
+                </details>
+              </div>
+            );
+          }
           return (
             <div key={msg.id} className="text-xs text-muted-foreground px-2 py-1 rounded bg-muted/50">
               {typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content)}

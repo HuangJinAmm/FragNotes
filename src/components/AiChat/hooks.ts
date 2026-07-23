@@ -1,7 +1,10 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
+import { memoKeys } from "@/hooks/useMemoQueries";
+import { userKeys } from "@/hooks/useUserQueries";
 import {
   appendMessage as persistAppendMessage,
   clearMessages as persistClearMessages,
@@ -24,7 +27,45 @@ interface UseAiChatOptions {
   providerId: string | null;
 }
 
+type QueryClient = ReturnType<typeof useQueryClient>;
+
+/// AI 工具执行后失效相关 React Query 缓存，使笔记列表/详情/统计等界面同步刷新。
+/// AI 工具直接操作后端数据库，绕过了 React Query mutation，因此需要手动失效。
+function invalidateQueriesForTool(queryClient: QueryClient, toolName: string, result: unknown) {
+  switch (toolName) {
+    case "create_memo": {
+      queryClient.invalidateQueries({ queryKey: memoKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: userKeys.stats() });
+      break;
+    }
+    case "update_memo": {
+      const uid = (result as { uid?: string } | null)?.uid;
+      if (uid) {
+        queryClient.invalidateQueries({ queryKey: memoKeys.detail(`memos/${uid}`) });
+      }
+      queryClient.invalidateQueries({ queryKey: memoKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: userKeys.stats() });
+      break;
+    }
+    case "link_memos": {
+      const r = result as { from_uid?: string; to_uid?: string } | null;
+      if (r?.from_uid) {
+        queryClient.invalidateQueries({ queryKey: memoKeys.detail(`memos/${r.from_uid}`) });
+      }
+      if (r?.to_uid) {
+        queryClient.invalidateQueries({ queryKey: memoKeys.detail(`memos/${r.to_uid}`) });
+      }
+      queryClient.invalidateQueries({ queryKey: memoKeys.lists() });
+      break;
+    }
+    case "load_skill":
+      // skill 加载不修改 memo 数据，无需失效缓存
+      break;
+  }
+}
+
 export function useAiChat({ providerId }: UseAiChatOptions) {
+  const queryClient = useQueryClient();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [currentSessionId, setCurrentSessionIdState] = useState<number | null>(null);
@@ -109,6 +150,7 @@ export function useAiChat({ providerId }: UseAiChatOptions) {
               isToolCall: true,
               toolCallId: tool_call_id,
               toolResult: result,
+              toolName: name,
             };
             next.push(toolMsg);
             // 落库 tool 消息
@@ -127,6 +169,8 @@ export function useAiChat({ providerId }: UseAiChatOptions) {
             }
             return next;
           });
+          // 工具执行已修改后端数据，按工具类型失效相关 React Query 缓存以刷新界面
+          invalidateQueriesForTool(queryClient, name, result);
         }),
       );
 
@@ -202,7 +246,7 @@ export function useAiChat({ providerId }: UseAiChatOptions) {
       unlistenersRef.current.forEach((fn) => fn());
       unlistenersRef.current = [];
     };
-  }, []);
+  }, [queryClient]);
 
   /// 把一条消息追加到当前 session 落库。
   /// 若 forceUpdate=true，则尝试更新已落库的同 id 消息（用于流式 assistant 增量更新）。
