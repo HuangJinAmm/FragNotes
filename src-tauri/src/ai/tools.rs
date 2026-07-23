@@ -4,6 +4,7 @@ use memos_core::markdown;
 use memos_core::memo::{CreateMemo, FindMemo, UpdateMemo};
 use memos_core::memo_relation::{UpsertMemoRelation};
 use memos_core::review::{self, ReviewCard};
+use memos_core::skill::Skill;
 use memos_core::types::{MemoRelationType, RowStatus, Visibility};
 use memos_core::Store;
 use serde_json::{json, Value};
@@ -153,11 +154,30 @@ pub fn tool_definitions() -> Vec<Value> {
                 }
             }
         }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "load_skill",
+                "description": "加载一个 skill 的完整指南文档到上下文。在调用任何业务工具前，若系统提示中列出的 skill 元数据与当前任务相关，请先调用本工具加载该 skill 的完整内容。一次只加载一个 skill；多个相关 skill 可分别调用。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "skill_id": { "type": "string", "description": "要加载的 skill id" }
+                    },
+                    "required": ["skill_id"]
+                }
+            }
+        }),
     ]
 }
 
 /// 执行工具调用，返回结果 JSON
-pub fn execute_tool(name: &str, args: &Value, store: &Store) -> memos_core::CoreResult<Value> {
+pub fn execute_tool(
+    name: &str,
+    args: &Value,
+    store: &Store,
+    builtin: &[Skill],
+) -> memos_core::CoreResult<Value> {
     match name {
         "list_memos" => execute_list_memos(args, store),
         "get_memo" => execute_get_memo(args, store),
@@ -168,6 +188,7 @@ pub fn execute_tool(name: &str, args: &Value, store: &Store) -> memos_core::Core
         "search_semantic" => execute_search_semantic(args, store),
         "link_memos" => execute_link_memos(args, store),
         "create_review_cards" => execute_create_review_cards(args, store),
+        "load_skill" => execute_load_skill(args, store, builtin),
         _ => Err(memos_core::CoreError::Other(format!("未知工具: {name}"))),
     }
 }
@@ -533,6 +554,46 @@ fn execute_create_review_cards(args: &Value, store: &Store) -> memos_core::CoreR
     }))
 }
 
+const MAX_SKILL_BODY_BYTES: usize = 50 * 1024;
+
+fn execute_load_skill(
+    args: &Value,
+    store: &Store,
+    builtin: &[Skill],
+) -> memos_core::CoreResult<Value> {
+    let skill_id = args
+        .get("skill_id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| {
+            memos_core::CoreError::Other("load_skill 缺少 skill_id 参数".into())
+        })?;
+
+    match memos_core::skill::get(builtin, store, skill_id)? {
+        Some(s) if s.enabled => {
+            let body = if s.body.len() > MAX_SKILL_BODY_BYTES {
+                // Find a safe UTF-8 boundary at or before MAX_SKILL_BODY_BYTES
+                let mut end = MAX_SKILL_BODY_BYTES;
+                while end > 0 && !s.body.is_char_boundary(end) {
+                    end -= 1;
+                }
+                let mut truncated = s.body[..end].to_string();
+                truncated.push_str("\n\n…[已截断]");
+                truncated
+            } else {
+                s.body
+            };
+            Ok(json!({
+                "id": s.id,
+                "name": s.name,
+                "body": body,
+            }))
+        }
+        _ => Ok(json!({
+            "error": "skill not found or disabled"
+        })),
+    }
+}
+
 /// 生成 16 字符 hex ID
 fn uuid_like() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -571,7 +632,7 @@ mod tests {
     #[test]
     fn test_tool_definitions_count() {
         let defs = tool_definitions();
-        assert_eq!(defs.len(), 9);
+        assert_eq!(defs.len(), 10);
         let names: Vec<&str> = defs
             .iter()
             .map(|d| d["function"]["name"].as_str().unwrap())
@@ -585,6 +646,7 @@ mod tests {
         assert!(names.contains(&"search_semantic"));
         assert!(names.contains(&"link_memos"));
         assert!(names.contains(&"create_review_cards"));
+        assert!(names.contains(&"load_skill"));
     }
 
     #[test]
@@ -650,7 +712,7 @@ mod tests {
     #[test]
     fn test_execute_tool_unknown() {
         let store = Store::open(":memory:").unwrap();
-        let result = execute_tool("unknown_tool", &json!({}), &store);
+        let result = execute_tool("unknown_tool", &json!({}), &store, &[]);
         assert!(result.is_err());
     }
 

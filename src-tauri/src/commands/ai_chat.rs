@@ -239,7 +239,7 @@ fn agent_loop(
             let args: Value = serde_json::from_str(&tc.arguments).unwrap_or(Value::Null);
             let result = {
                 let store = state.store();
-                execute_tool(&tc.name, &args, &store)
+                execute_tool(&tc.name, &args, &store, &state.builtin_skills)
             };
             let result = match result {
                 Ok(v) => v,
