@@ -14,6 +14,7 @@ pub mod migration;
 pub mod reaction;
 pub mod review;
 pub mod setting;
+pub mod skill;
 pub mod store;
 pub mod tag;
 pub mod types;
