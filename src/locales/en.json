@@ -213,6 +213,7 @@
     "restore": "Restore",
     "role": "Role",
     "save": "Save",
+    "saving": "Saving...",
     "search": "Search",
     "select": "Select",
     "settings": "Settings",
@@ -1093,6 +1094,28 @@
     },
     "review": {
       "label": "Review"
+    },
+    "skills": {
+      "label": "Skills",
+      "description": "Manage custom AI chat skills that extend the assistant's capabilities.",
+      "builtin": "Built-in Skills",
+      "custom": "Custom Skills",
+      "create": "New Skill",
+      "toggle-failed": "Failed to toggle skill.",
+      "delete-failed": "Failed to delete skill.",
+      "confirm-delete": "Are you sure you want to delete the skill \"{{name}}\"? This action cannot be undone.",
+      "editor": {
+        "edit": "Edit Skill",
+        "create": "New Skill",
+        "id": "ID",
+        "id-hint": "Unique identifier for the skill (e.g. my-skill). Cannot be changed after creation.",
+        "name": "Name",
+        "description": "Description",
+        "tools": "Allowed Tools",
+        "body": "Skill Body",
+        "validation-required": "Please fill in the ID, name, description, and body.",
+        "save-failed": "Failed to save skill."
+      }
     }
   },
   "tag": {
