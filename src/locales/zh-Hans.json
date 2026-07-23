@@ -32,7 +32,10 @@
     "rename": "重命名",
     "delete": "删除",
     "confirmDeleteSession": "确定要删除该会话吗？所有消息将一并删除。",
-    "messageCount": "{{count}} 条消息"
+    "messageCount": "{{count}} 条消息",
+    "skill": {
+      "loaded": "加载 Skill: {{name}}"
+    }
   },
   "lan": {
     "discovery": {
@@ -180,6 +183,7 @@
     "restore": "恢复",
     "role": "身份",
     "save": "保存",
+    "saving": "保存中...",
     "search": "搜索",
     "select": "选择",
     "settings": "设置",
@@ -1074,6 +1078,28 @@
     },
     "review": {
       "label": "回顾"
+    },
+    "skills": {
+      "label": "Skills",
+      "description": "管理自定义 AI 聊天 Skills，扩展助手的能力。",
+      "builtin": "内置 Skills",
+      "custom": "自定义 Skills",
+      "create": "新建 Skill",
+      "toggle-failed": "切换状态失败",
+      "delete-failed": "删除失败",
+      "confirm-delete": "确定删除 Skill \"{{name}}\" 吗？此操作不可撤销。",
+      "editor": {
+        "edit": "编辑 Skill",
+        "create": "新建 Skill",
+        "id": "ID",
+        "id-hint": "Skill 的唯一标识符（如 my-skill）。创建后不可修改。",
+        "name": "名称",
+        "description": "描述",
+        "tools": "关联工具",
+        "body": "Skill 正文",
+        "validation-required": "请填写 ID、名称、描述和正文。",
+        "save-failed": "保存失败"
+      }
     }
   },
   "tag": {
