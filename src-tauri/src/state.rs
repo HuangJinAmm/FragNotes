@@ -3,6 +3,7 @@
 use crate::lan::LanState;
 use crate::llm_runner::LlmRunnerState;
 use crate::mcp::McpState;
+use memos_core::skill::Skill;
 use memos_core::Store;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
@@ -17,6 +18,8 @@ pub struct AppState {
     pub llm: RwLock<Option<Arc<LlmRunnerState>>>,
     /// 本地 MCP 服务器运行时状态，支持在设置页里手动启停
     pub mcp: RwLock<Option<Arc<McpState>>>,
+    /// 内置 skill 缓存（启动时从 include_str! 解析，只读）
+    pub builtin_skills: Vec<Skill>,
     /// 全局 shutdown 标志：app 退出时设为 true，后台任务据此提前终止
     pub shutdown: AtomicBool,
     /// 保证退出清理只执行一次，避免重复触发退出流程

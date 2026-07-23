@@ -15,3 +15,4 @@ pub mod memo_relation;
 pub mod reaction;
 pub mod review;
 pub mod setting;
+pub mod skill;

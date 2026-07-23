@@ -209,6 +209,7 @@ fn main() {
                 lan: std::sync::RwLock::new(None),
                 llm: std::sync::RwLock::new(None),
                 mcp: std::sync::RwLock::new(None),
+                builtin_skills: crate::ai::builtin_skills::load_builtin_skills(),
                 shutdown: std::sync::atomic::AtomicBool::new(false),
                 cleanup_started: std::sync::atomic::AtomicBool::new(false),
             });
@@ -327,6 +328,12 @@ fn main() {
             commands::setting::get_instance_stats,
             commands::setting::get_storage_config,
             commands::setting::update_storage_config,
+            // skills
+            commands::skill::skill_list,
+            commands::skill::skill_create,
+            commands::skill::skill_update,
+            commands::skill::skill_delete,
+            commands::skill::skill_set_enabled,
             // ai chat
             commands::ai_chat::ai_chat,
             commands::ai_chat::ai_abort,
