@@ -13,7 +13,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { getErrorMessage } from "@/lib/error";
 import { useTranslate } from "@/utils/i18n";
-import { KNOWN_TOOL_NAMES, type SkillDto } from "@/types/skill";
+import type { SkillDto } from "@/types/skill";
+import { useKnownToolNames } from "@/hooks/useToolQueries";
 
 interface SkillEditorProps {
   open: boolean;
@@ -40,6 +41,7 @@ const SkillEditor = ({ open, skill, onSave, onClose }: SkillEditorProps) => {
   const isEdit = skill !== null;
   const [draft, setDraft] = useState<SkillDto>(emptySkill());
   const [saving, setSaving] = useState(false);
+  const knownToolNames = useKnownToolNames();
 
   useEffect(() => {
     if (open) {
@@ -118,7 +120,7 @@ const SkillEditor = ({ open, skill, onSave, onClose }: SkillEditorProps) => {
           <div className="space-y-2">
             <Label>{t("setting.skills.editor.tools")}</Label>
             <div className="flex flex-wrap gap-2">
-              {KNOWN_TOOL_NAMES.map((tool) => (
+              {knownToolNames.map((tool) => (
                 <button
                   key={tool}
                   type="button"
