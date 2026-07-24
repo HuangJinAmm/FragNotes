@@ -82,6 +82,15 @@ struct ToolPayload {
     args: Value,
     tool_call_id: String,
     result: Value,
+    /// 用户工具标识（前端用于差异化渲染）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    is_user_tool: Option<bool>,
+    /// 用户工具权限等级
+    #[serde(skip_serializing_if = "Option::is_none")]
+    permission: Option<String>,
+    /// 用户是否拒绝
+    #[serde(skip_serializing_if = "Option::is_none")]
+    denied: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -150,6 +159,14 @@ fn agent_loop(
     abort_flag: Arc<AtomicBool>,
 ) {
     let state = app.state::<AppState>();
+    // abort/shutdown 时唤醒所有 pending 确认（RAII guard，无论 agent_loop 因何原因 return 都会触发）
+    struct CancelGuard<'a>(&'a AppState);
+    impl<'a> Drop for CancelGuard<'a> {
+        fn drop(&mut self) {
+            self.0.pending_confirmations.cancel_all();
+        }
+    }
+    let _cancel_guard = CancelGuard(&*state);
     let mut msgs: Vec<Value> = messages
         .iter()
         .map(|m| serde_json::to_value(m).unwrap_or(Value::Null))
@@ -161,6 +178,10 @@ fn agent_loop(
     let skill_section = {
         let store = state.store();
         memos_core::skill::list_enabled(&builtin, &store).unwrap_or_default()
+    };
+    let user_tools = {
+        let store = state.store();
+        memos_core::tool::list_enabled(&store).unwrap_or_default()
     };
     let skill_metadata = build_skill_metadata_section(&skill_section);
     let system_content = format!("{}{}", SYSTEM_PROMPT, skill_metadata);
@@ -180,7 +201,7 @@ fn agent_loop(
             "model": provider.model,
             "messages": req_messages,
             "stream": true,
-            "tools": tool_definitions(&[]),
+            "tools": tool_definitions(&user_tools),
         });
 
         let url = format!("{}/chat/completions", provider.base_url.trim_end_matches('/'));
@@ -278,12 +299,24 @@ fn agent_loop(
                 Err(e) => json!({ "error": e.to_string() }),
             };
             // 工具执行完成后发送事件，携带结果，供前端持久化并随下次请求回传给模型
+            // 判断是否用户工具（内置 10 个之外的工具名）
+            let is_user_tool = !memos_core::tool::BUILTIN_TOOL_NAMES.contains(&tc.name.as_str());
+            let (permission_opt, denied_opt) = if is_user_tool {
+                let perm = result.get("permission").and_then(|v| v.as_str()).map(String::from);
+                let denied = result.get("denied").and_then(|v| v.as_bool());
+                (perm, denied)
+            } else {
+                (None, None)
+            };
             let _ = app.emit("ai:tool", ToolPayload {
                 run_id,
                 name: tc.name.clone(),
                 args: args.clone(),
                 tool_call_id: tc.id.clone(),
                 result: result.clone(),
+                is_user_tool: if is_user_tool { Some(true) } else { None },
+                permission: permission_opt,
+                denied: denied_opt,
             });
             msgs.push(json!({
                 "role": "tool",
