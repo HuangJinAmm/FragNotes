@@ -4,6 +4,11 @@ import ReactMarkdown from "react-markdown";
 import { MemoMarkdownRenderer } from "@/components/MemoContent/MemoMarkdownRenderer";
 import { useTranslate } from "@/utils/i18n";
 import { cn } from "@/lib/utils";
+import {
+  PERMISSION_BADGE_COLORS,
+  PERMISSION_LABELS,
+  type ToolPermission,
+} from "@/types/tool";
 import type { ChatMessage, ContentPart } from "./types";
 
 interface AiChatMessagesProps {
@@ -77,6 +82,51 @@ export function AiChatMessages({ messages }: AiChatMessagesProps) {
                     )}
                   </div>
                 </details>
+              </div>
+            );
+          }
+          // 用户工具渲染：根据 result 中的 tool_name 和 permission 判断
+          const userToolResult = msg.toolResult as {
+            tool_name?: string;
+            permission?: string;
+            denied?: boolean;
+            error?: string;
+            output?: string;
+            exit_code?: number;
+          } | null;
+
+          if (userToolResult?.tool_name && userToolResult?.permission) {
+            const perm = userToolResult.permission as ToolPermission;
+            const isDenied = userToolResult.denied === true;
+            return (
+              <div
+                key={msg.id}
+                className={`my-1 rounded border p-2 text-xs ${
+                  isDenied
+                    ? "border-yellow-200 bg-yellow-50 dark:border-yellow-900 dark:bg-yellow-950/30"
+                    : userToolResult.error
+                    ? "border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/30"
+                    : "border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-900/30"
+                }`}
+              >
+                <div className="mb-1 flex items-center gap-2">
+                  <span className="font-medium">{userToolResult.tool_name}</span>
+                  <span className={`rounded px-1.5 py-0.5 text-[10px] ${PERMISSION_BADGE_COLORS[perm]}`}>
+                    {PERMISSION_LABELS[perm]}
+                  </span>
+                  {isDenied && (
+                    <span className="text-yellow-700 dark:text-yellow-300">
+                      {t("aiChat.tool.denied")}
+                    </span>
+                  )}
+                </div>
+                {userToolResult.error ? (
+                  <p className="font-mono text-red-600 dark:text-red-400">{userToolResult.error}</p>
+                ) : (
+                  <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all font-mono">
+                    {userToolResult.output ?? ""}
+                  </pre>
+                )}
               </div>
             );
           }

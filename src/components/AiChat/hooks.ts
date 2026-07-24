@@ -61,6 +61,10 @@ function invalidateQueriesForTool(queryClient: QueryClient, toolName: string, re
     case "load_skill":
       // skill 加载不修改 memo 数据，无需失效缓存
       break;
+    default:
+      // 用户工具：不直接修改 memo 数据（与 load_skill 同样 no-op）
+      // 内置工具名之外的工具调用都走这里
+      break;
   }
 }
 
