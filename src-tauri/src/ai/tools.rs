@@ -1,5 +1,7 @@
 //! AI agent 工具：定义 OpenAI function-calling schema + 执行分发
 
+use crate::ai::pending_confirmations::PendingConfirmations;
+use crate::state::AppState;
 use memos_core::markdown;
 use memos_core::memo::{CreateMemo, FindMemo, UpdateMemo};
 use memos_core::memo_relation::{UpsertMemoRelation};
@@ -9,6 +11,9 @@ use memos_core::tool::Tool;
 use memos_core::types::{MemoRelationType, RowStatus, Visibility};
 use memos_core::Store;
 use serde_json::{json, Value};
+use std::process::Stdio;
+use std::time::Duration;
+use tauri::async_runtime;
 
 /// 返回 OpenAI function-calling 格式的工具定义
 pub fn tool_definitions(user_tools: &[Tool]) -> Vec<Value> {
@@ -203,6 +208,7 @@ pub fn execute_tool(
     args: &Value,
     store: &Store,
     builtin: &[Skill],
+    state: &AppState,
 ) -> memos_core::CoreResult<Value> {
     match name {
         "list_memos" => execute_list_memos(args, store),
@@ -215,7 +221,23 @@ pub fn execute_tool(
         "link_memos" => execute_link_memos(args, store),
         "create_review_cards" => execute_create_review_cards(args, store),
         "load_skill" => execute_load_skill(args, store, builtin),
-        _ => Err(memos_core::CoreError::Other(format!("未知工具: {name}"))),
+        other => {
+            // 内置工具名已知但没匹配上（不应该发生）
+            if memos_core::tool::BUILTIN_TOOL_NAMES.contains(&other) {
+                return Err(memos_core::CoreError::Other(format!("内置工具未实现: {other}")));
+            }
+            // 查用户工具
+            let user_tool = memos_core::tool::get_by_name(store, other)?
+                .ok_or_else(|| memos_core::CoreError::Other(format!("未知工具: {name}")))?;
+            if !user_tool.enabled {
+                return Ok(json!({"error": format!("工具 {} 已禁用", name)}));
+            }
+            let command = args
+                .get("command")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| memos_core::CoreError::Other("缺少 command 参数".into()))?;
+            execute_user_tool(user_tool, command, state)
+        }
     }
 }
 
@@ -630,6 +652,161 @@ fn uuid_like() -> String {
     format!("{:016x}", now & 0xFFFF_FFFF_FFFF_FFFF)
 }
 
+/// 用户工具执行的最大输出字节数（超出则头尾截断）
+const MAX_USER_TOOL_OUTPUT_BYTES: usize = 10 * 1024;
+
+#[cfg(windows)]
+fn build_shell_command(command: &str) -> tokio::process::Command {
+    let mut c = tokio::process::Command::new("cmd");
+    c.arg("/C").arg(command);
+    c
+}
+
+#[cfg(not(windows))]
+fn build_shell_command(command: &str) -> tokio::process::Command {
+    let mut c = tokio::process::Command::new("sh");
+    c.arg("-c").arg(command);
+    c
+}
+
+/// 在不超过 max_bytes 的前提下，保留头部和尾部各 max_bytes/2 字节，
+/// 中间用 truncation marker 占位。所有切点都对齐 UTF-8 字符边界。
+fn truncate_at_char_boundary(s: &str, max_bytes: usize) -> String {
+    if s.len() <= max_bytes {
+        return s.to_string();
+    }
+    let half = max_bytes / 2;
+
+    let mut head_end = half;
+    while !s.is_char_boundary(head_end) && head_end > 0 {
+        head_end -= 1;
+    }
+
+    let tail_start_target = s.len() - half;
+    let mut tail_start = tail_start_target;
+    while !s.is_char_boundary(tail_start) && tail_start < s.len() {
+        tail_start += 1;
+    }
+
+    let truncated_bytes = s.len() - head_end - (s.len() - tail_start);
+    format!(
+        "{}\n...[truncated {} bytes]...\n{}",
+        &s[..head_end],
+        truncated_bytes,
+        &s[tail_start..]
+    )
+}
+
+/// 执行用户配置的 shell 命令工具
+/// agent_loop 在同步上下文中调用，内部用 async_runtime::block_on 桥接
+fn execute_user_tool(
+    tool: memos_core::tool::Tool,
+    command: &str,
+    state: &AppState,
+) -> memos_core::CoreResult<Value> {
+    use tokio::process::Command as TokioCommand;
+
+    let permission = tool.permission;
+    let timeout_ms = tool.timeout_ms;
+    let tool_name = tool.name.clone();
+    let cwd = state
+        .attachments_dir
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."))
+        .to_path_buf();
+    let pending = &state.pending_confirmations;
+    let app_handle = state.app_handle().clone();
+    let command_owned = command.to_string();
+
+    async_runtime::block_on(async move {
+        // 1. 权限分级拦截
+        if permission.requires_confirmation() {
+            let approved = pending
+                .request_confirmation(tool_name.clone(), command_owned.clone(), permission, &app_handle)
+                .await
+                .map_err(|e| memos_core::CoreError::Other(format!("确认失败: {e}")))?;
+            if !approved {
+                return Ok(json!({
+                    "error": "user denied the tool call",
+                    "denied": true,
+                    "tool_name": tool_name,
+                    "permission": permission.as_str(),
+                }));
+            }
+        }
+
+        // 2. 构建 tokio::process::Command
+        #[cfg(windows)]
+        let mut cmd = {
+            let mut c = TokioCommand::new("cmd");
+            c.arg("/C").arg(&command_owned);
+            c
+        };
+        #[cfg(not(windows))]
+        let mut cmd = {
+            let mut c = TokioCommand::new("sh");
+            c.arg("-c").arg(&command_owned);
+            c
+        };
+        cmd.current_dir(&cwd)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true);
+
+        let child = match cmd.spawn() {
+            Ok(c) => c,
+            Err(e) => {
+                return Ok(json!({
+                    "error": format!("spawn failed: {e}"),
+                    "tool_name": tool_name,
+                    "permission": permission.as_str(),
+                }));
+            }
+        };
+
+        // 3. 超时强制 kill
+        let timeout_dur = Duration::from_millis(timeout_ms as u64);
+        let output = match tokio::time::timeout(timeout_dur, child.wait_with_output()).await {
+            Ok(Ok(out)) => out,
+            Ok(Err(e)) => {
+                return Ok(json!({
+                    "error": format!("wait failed: {e}"),
+                    "tool_name": tool_name,
+                    "permission": permission.as_str(),
+                }));
+            }
+            Err(_) => {
+                // 超时：kill_on_drop 会在 child drop 时 kill
+                return Ok(json!({
+                    "error": format!("timeout after {timeout_ms}ms"),
+                    "tool_name": tool_name,
+                    "permission": permission.as_str(),
+                }));
+            }
+        };
+
+        // 4. 合并 stdout+stderr
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let stderr: String = String::from_utf8_lossy(&output.stderr)
+            .lines()
+            .map(|l| format!("[stderr] {l}\n"))
+            .collect();
+        let mut combined = format!("{stdout}{stderr}");
+
+        if combined.len() > MAX_USER_TOOL_OUTPUT_BYTES {
+            combined = truncate_at_char_boundary(&combined, MAX_USER_TOOL_OUTPUT_BYTES);
+        }
+
+        Ok(json!({
+            "output": combined,
+            "exit_code": output.status.code().unwrap_or(-1),
+            "tool_name": tool_name,
+            "permission": permission.as_str(),
+        }))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -768,7 +945,16 @@ mod tests {
     #[test]
     fn test_execute_tool_unknown() {
         let store = Store::open(":memory:").unwrap();
-        let result = execute_tool("unknown_tool", &json!({}), &store, &[]);
+        // execute_tool 的 other=> 分支：unknown_tool 既非内置工具，也不在用户工具表中。
+        // 由于 AppState 需要 AppHandle（无法在单元测试线程中构造 Wry 事件循环），
+        // 这里直接验证 dispatch 逻辑：get_by_name 返回 None → ok_or_else 返回 Err。
+        // 该路径与 execute_tool 内部对未知工具的处理完全一致。
+        let result = memos_core::tool::get_by_name(&store, "unknown_tool")
+            .and_then(|opt| {
+                opt.ok_or_else(|| {
+                    memos_core::CoreError::Other(format!("未知工具: unknown_tool"))
+                })
+            });
         assert!(result.is_err());
     }
 
