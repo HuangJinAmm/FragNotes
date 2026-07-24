@@ -15,6 +15,7 @@ pub mod reaction;
 pub mod review;
 pub mod setting;
 pub mod skill;
+pub mod tool;
 pub mod store;
 pub mod tag;
 pub mod types;
