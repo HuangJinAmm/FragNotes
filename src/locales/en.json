@@ -1119,6 +1119,37 @@
         "validation-required": "Please fill in the ID, name, description, and body.",
         "save-failed": "Failed to save skill."
       }
+    },
+    "tools": {
+      "label": "Tools",
+      "description": "Manage custom shell tools that the AI assistant can invoke.",
+      "list": "Tools",
+      "empty": "No tools yet. Create one to let the assistant run shell commands.",
+      "create": "New Tool",
+      "toggle-failed": "Failed to toggle tool.",
+      "delete-failed": "Failed to delete tool.",
+      "confirm-delete": "Are you sure you want to delete the tool \"{{name}}\"? This action cannot be undone.",
+      "editor": {
+        "edit": "Edit Tool",
+        "create": "New Tool",
+        "id": "ID",
+        "id-hint": "Unique identifier for the tool (e.g. my-tool). Cannot be changed after creation.",
+        "name": "Name",
+        "command": "Command",
+        "command-hint": "Shell command to execute. Will be run through the system shell.",
+        "permission": "Permission",
+        "description": "Description",
+        "description-placeholder": "What this tool does, shown to the assistant.",
+        "timeout": "Timeout (ms)",
+        "timeout-hint": "Execution timeout in milliseconds (1000-600000).",
+        "validation-id": "Please enter an ID.",
+        "validation-name": "Name must contain only lowercase letters, digits, and underscores.",
+        "validation-name-builtin": "Name conflicts with a built-in tool. Choose another.",
+        "validation-command": "Command cannot be empty.",
+        "validation-description": "Description cannot be empty.",
+        "validation-timeout": "Timeout must be between 1000 and 600000 ms.",
+        "save-failed": "Failed to save tool."
+      }
     }
   },
   "tag": {

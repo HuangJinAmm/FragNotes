@@ -1,5 +1,5 @@
 // 本地应用 Settings：只保留 4 个 section
-import { BarChart3Icon, BookOpenIcon, CogIcon, CpuIcon, HardDriveIcon, LibraryIcon, PlugIcon, RadioIcon, SparklesIcon, TagsIcon, UserIcon, type LucideIcon } from "lucide-react";
+import { BarChart3Icon, BookOpenIcon, CogIcon, CpuIcon, HardDriveIcon, LibraryIcon, PlugIcon, RadioIcon, SparklesIcon, TagsIcon, UserIcon, WrenchIcon, type LucideIcon } from "lucide-react";
 import { type ComponentType } from "react";
 import MemoRelatedSettings from "@/components/Settings/MemoRelatedSettings";
 import MyAccountSection from "@/components/Settings/MyAccountSection";
@@ -12,6 +12,7 @@ import StorageSection from "@/components/Settings/StorageSection";
 import TagsSection from "@/components/Settings/TagsSection";
 import ReviewSection from "@/components/Settings/ReviewSection";
 import SkillsSection from "@/components/Settings/SkillsSection";
+import ToolsSection from "@/components/Settings/ToolsSection";
 import { InstanceSetting_Key } from "@/types/proto/api/v1/instance_service_pb";
 
 export type SettingSectionKey =
@@ -25,7 +26,8 @@ export type SettingSectionKey =
   | "local-llm"
   | "mcp"
   | "review"
-  | "skills";
+  | "skills"
+  | "tools";
 
 type SettingSectionScope = "basic" | "admin";
 
@@ -115,6 +117,13 @@ export const SETTINGS_SECTIONS: SettingSectionDefinition[] = [
     labelKey: "setting.skills.label",
     icon: SparklesIcon,
     component: SkillsSection,
+  },
+  {
+    key: "tools",
+    scope: "basic",
+    labelKey: "setting.tools.label",
+    icon: WrenchIcon,
+    component: ToolsSection,
   },
 ];
 
