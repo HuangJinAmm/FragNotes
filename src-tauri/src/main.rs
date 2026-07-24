@@ -336,6 +336,13 @@ fn main() {
             commands::skill::skill_update,
             commands::skill::skill_delete,
             commands::skill::skill_set_enabled,
+            // tools
+            commands::tool::tool_list,
+            commands::tool::tool_create,
+            commands::tool::tool_update,
+            commands::tool::tool_delete,
+            commands::tool::tool_set_enabled,
+            commands::tool::tool_confirm_response,
             // ai chat
             commands::ai_chat::ai_chat,
             commands::ai_chat::ai_abort,

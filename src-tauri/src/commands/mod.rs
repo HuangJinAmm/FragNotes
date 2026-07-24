@@ -16,3 +16,4 @@ pub mod reaction;
 pub mod review;
 pub mod setting;
 pub mod skill;
+pub mod tool;
