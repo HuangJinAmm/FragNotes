@@ -35,6 +35,17 @@
     "messageCount": "{{count}} messages",
     "skill": {
       "loaded": "Loaded Skill: {{name}}"
+    },
+    "tool": {
+      "confirm-title": "Tool Call Confirmation",
+      "confirm-description": "The AI assistant is requesting to execute the following tool. Please confirm.",
+      "tool-name": "Tool",
+      "command": "Command",
+      "dangerous-warning": "This tool is marked as dangerous. Execution may cause irreversible consequences.",
+      "countdown": "Auto-denied in {{seconds}} seconds",
+      "deny": "Deny",
+      "approve": "Approve",
+      "denied": "Denied"
     }
   },
   "lan": {

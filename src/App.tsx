@@ -5,6 +5,7 @@ import { useInstance } from "./contexts/InstanceContext";
 import { MemoFilterProvider } from "./contexts/MemoFilterContext";
 import { useUserLocale } from "./hooks/useUserLocale";
 import { useUserTheme } from "./hooks/useUserTheme";
+import ToolConfirmDialog from "@/components/AiChat/ToolConfirmDialog";
 
 const App = () => {
   const { generalSetting: instanceGeneralSetting } = useInstance();
@@ -48,6 +49,7 @@ const App = () => {
       <SearchHighlightProvider>
         <Outlet />
       </SearchHighlightProvider>
+      <ToolConfirmDialog />
     </MemoFilterProvider>
   );
 };

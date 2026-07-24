@@ -96,6 +96,12 @@ export interface ToolPayload {
   args: unknown;
   tool_call_id: string;
   result: unknown;
+  /** 用户工具标识（前端用于差异化渲染） */
+  is_user_tool?: boolean;
+  /** 用户工具权限等级 */
+  permission?: string;
+  /** 用户是否拒绝 */
+  denied?: boolean;
 }
 
 export interface DonePayload {
