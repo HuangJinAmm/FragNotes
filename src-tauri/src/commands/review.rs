@@ -664,7 +664,7 @@ fn run_card_agent(
             "model": provider.model,
             "messages": req_messages,
             "stream": true,
-            "tools": tool_definitions(),
+            "tools": tool_definitions(&[]),
         });
 
         let url = format!("{}/chat/completions", provider.base_url.trim_end_matches('/'));

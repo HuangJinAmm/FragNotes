@@ -5,13 +5,14 @@ use memos_core::memo::{CreateMemo, FindMemo, UpdateMemo};
 use memos_core::memo_relation::{UpsertMemoRelation};
 use memos_core::review::{self, ReviewCard};
 use memos_core::skill::Skill;
+use memos_core::tool::Tool;
 use memos_core::types::{MemoRelationType, RowStatus, Visibility};
 use memos_core::Store;
 use serde_json::{json, Value};
 
 /// 返回 OpenAI function-calling 格式的工具定义
-pub fn tool_definitions() -> Vec<Value> {
-    vec![
+pub fn tool_definitions(user_tools: &[Tool]) -> Vec<Value> {
+    let mut defs: Vec<Value> = vec![
         json!({
             "type": "function",
             "function": {
@@ -168,7 +169,32 @@ pub fn tool_definitions() -> Vec<Value> {
                 }
             }
         }),
-    ]
+    ];
+    // 追加用户工具定义
+    for ut in user_tools.iter().filter(|t| t.enabled) {
+        defs.push(json!({
+            "type": "function",
+            "function": {
+                "name": ut.name,
+                "description": format!(
+                    "{}\n\n[权限等级: {}] 执行用户配置的 shell 命令。配置默认命令: `{}`。\
+                     调用时传入完整 command 字符串，后端在固定工作目录执行。",
+                    ut.description, ut.permission.as_str(), ut.command
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "command": {
+                            "type": "string",
+                            "description": "要执行的完整 shell 命令字符串"
+                        }
+                    },
+                    "required": ["command"]
+                }
+            }
+        }));
+    }
+    defs
 }
 
 /// 执行工具调用，返回结果 JSON
@@ -631,7 +657,7 @@ mod tests {
 
     #[test]
     fn test_tool_definitions_count() {
-        let defs = tool_definitions();
+        let defs = tool_definitions(&[]);
         assert_eq!(defs.len(), 10);
         let names: Vec<&str> = defs
             .iter()
@@ -647,6 +673,36 @@ mod tests {
         assert!(names.contains(&"link_memos"));
         assert!(names.contains(&"create_review_cards"));
         assert!(names.contains(&"load_skill"));
+    }
+
+    #[test]
+    fn test_tool_definitions_with_user_tools() {
+        use memos_core::tool::Permission;
+        let enabled = Tool {
+            id: "u-a".to_string(),
+            name: "my_tool".to_string(),
+            command: "echo hi".to_string(),
+            permission: Permission::ReadOnly,
+            description: "test".to_string(),
+            timeout_ms: 30000,
+            enabled: true,
+            created_ts: 0,
+            updated_ts: 0,
+        };
+        let disabled = Tool {
+            id: "u-b".to_string(),
+            name: "disabled_tool".to_string(),
+            enabled: false,
+            ..enabled.clone()
+        };
+        let defs = tool_definitions(&[enabled, disabled]);
+        assert_eq!(defs.len(), 11); // 10 + 1 enabled
+        let names: Vec<&str> = defs
+            .iter()
+            .map(|d| d["function"]["name"].as_str().unwrap())
+            .collect();
+        assert!(names.contains(&"my_tool"));
+        assert!(!names.contains(&"disabled_tool"));
     }
 
     #[test]
