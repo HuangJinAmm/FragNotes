@@ -212,6 +212,8 @@ fn main() {
                 builtin_skills: crate::ai::builtin_skills::load_builtin_skills(),
                 shutdown: std::sync::atomic::AtomicBool::new(false),
                 cleanup_started: std::sync::atomic::AtomicBool::new(false),
+                pending_confirmations: crate::ai::pending_confirmations::PendingConfirmations::new(),
+                app_handle: app.handle().clone(),
             });
 
             // 根据持久化设置决定是否在启动时拉起 LAN 模块

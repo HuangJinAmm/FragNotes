@@ -1,5 +1,6 @@
 //! 应用状态：持有 Store 与附件存储根目录
 
+use crate::ai::pending_confirmations::PendingConfirmations;
 use crate::lan::LanState;
 use crate::llm_runner::LlmRunnerState;
 use crate::mcp::McpState;
@@ -24,6 +25,10 @@ pub struct AppState {
     pub shutdown: AtomicBool,
     /// 保证退出清理只执行一次，避免重复触发退出流程
     pub cleanup_started: AtomicBool,
+    /// 用户工具确认通道（executable/dangerous 工具调用时需要前端确认）
+    pub pending_confirmations: PendingConfirmations,
+    /// AppHandle 副本，用于 emit 事件（agent_loop 等同步上下文需要）
+    pub app_handle: tauri::AppHandle,
 }
 
 impl AppState {
@@ -55,5 +60,10 @@ impl AppState {
         self.cleanup_started
             .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
             .is_ok()
+    }
+
+    /// 获取 app_handle 引用
+    pub fn app_handle(&self) -> &tauri::AppHandle {
+        &self.app_handle
     }
 }
