@@ -2,6 +2,7 @@
 
 pub mod builtin_skills;
 pub mod llm_call;
+pub mod pending_confirmations;
 pub mod provider;
 pub mod sse;
 pub mod tools;
