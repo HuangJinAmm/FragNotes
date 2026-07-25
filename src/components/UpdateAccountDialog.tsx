@@ -1,6 +1,6 @@
 import { isEqual } from "lodash-es";
 import { XIcon } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "react-hot-toast";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -24,7 +24,6 @@ interface Props {
 
 interface State {
   avatarUrl: string;
-  username: string;
   displayName: string;
   email: string;
   description: string;
@@ -38,11 +37,23 @@ function UpdateAccountDialog({ open, onOpenChange, onSuccess }: Props) {
   const { mutateAsync: updateUser } = useUpdateUser();
   const [state, setState] = useState<State>({
     avatarUrl: currentUser?.avatarUrl ?? "",
-    username: currentUser?.username ?? "",
     displayName: currentUser?.displayName ?? "",
     email: currentUser?.email ?? "",
     description: currentUser?.description ?? "",
   });
+
+  // 弹窗打开时用最新 currentUser 重新初始化 state
+  // 解决：组件首次渲染时 currentUser 可能还是初始值，后续 AuthContext 加载完成后需同步
+  useEffect(() => {
+    if (open) {
+      setState({
+        avatarUrl: currentUser?.avatarUrl ?? "",
+        displayName: currentUser?.displayName ?? "",
+        email: currentUser?.email ?? "",
+        description: currentUser?.description ?? "",
+      });
+    }
+  }, [open, currentUser?.avatarUrl, currentUser?.displayName, currentUser?.email, currentUser?.description]);
 
   const handleCloseBtnClick = () => {
     onOpenChange(false);
@@ -83,12 +94,6 @@ function UpdateAccountDialog({ open, onOpenChange, onSuccess }: Props) {
     });
   };
 
-  const handleUsernameChanged = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setPartialState({
-      username: e.target.value as string,
-    });
-  };
-
   const handleEmailChanged = (e: React.ChangeEvent<HTMLInputElement>) => {
     setState((state) => {
       return {
@@ -108,16 +113,8 @@ function UpdateAccountDialog({ open, onOpenChange, onSuccess }: Props) {
   };
 
   const handleSaveBtnClick = async () => {
-    if (state.username === "") {
-      toast.error(t("message.fill-all"));
-      return;
-    }
-
     try {
       const updateMask = [];
-      if (!isEqual(currentUser?.username, state.username)) {
-        updateMask.push("username");
-      }
       if (!isEqual(currentUser?.displayName, state.displayName)) {
         updateMask.push("display_name");
       }
@@ -133,7 +130,6 @@ function UpdateAccountDialog({ open, onOpenChange, onSuccess }: Props) {
       const updatedUser = await updateUser({
         user: {
           name: currentUser?.name,
-          username: state.username,
           displayName: state.displayName,
           email: state.email,
           avatarUrl: state.avatarUrl,
@@ -175,18 +171,6 @@ function UpdateAccountDialog({ open, onOpenChange, onSuccess }: Props) {
                 }
               />
             )}
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="username">
-              {t("common.username")}
-              <span className="text-sm text-muted-foreground ml-1">({t("setting.account.username-note")})</span>
-            </Label>
-            <Input
-              id="username"
-              value={state.username}
-              onChange={handleUsernameChanged}
-              disabled={instanceGeneralSetting.disallowChangeUsername}
-            />
           </div>
           <div className="grid gap-2">
             <Label htmlFor="displayName">

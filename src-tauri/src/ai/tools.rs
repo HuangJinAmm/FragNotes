@@ -735,6 +735,64 @@ fn split_shell_args(s: &str) -> Vec<String> {
     args
 }
 
+/// 从切分后的命令参数中提取 office 文档文件路径
+///
+/// 解析规则：
+/// - 第一个 token 是子命令（如 get/set/add/watch 等）
+/// - 在剩余 token 中查找第一个以 .docx/.xlsx/.pptx 结尾的参数
+/// - 跳过 watch/unwatch 子命令（这些是 watch 服务自身的控制命令）
+/// - 跳过选项参数（以 `--` 开头）及其后的值（如 `--port 26315`）
+///
+/// 返回相对路径（相对于 officecli 的 cwd），调用方负责拼接为绝对路径。
+fn extract_office_file(args: &[String]) -> Option<std::path::PathBuf> {
+    if args.is_empty() {
+        return None;
+    }
+
+    let subcommand = args[0].to_lowercase();
+    // watch/unwatch 是 watch 服务自身的控制命令，跳过避免递归启动
+    if matches!(subcommand.as_str(), "watch" | "unwatch") {
+        return None;
+    }
+
+    let office_exts = ["docx", "xlsx", "pptx"];
+    let mut skip_next = false;
+    let mut i = 1;
+    while i < args.len() {
+        let token = &args[i];
+
+        if skip_next {
+            skip_next = false;
+            i += 1;
+            continue;
+        }
+
+        if token.starts_with("--") {
+            // --json / --help 等无值选项直接跳过
+            // 带值选项（如 --port 26315）需跳过下一个 token
+            // 简化：--port 这种带值选项手动列出
+            if matches!(token.as_str(), "--port" | "--type" | "--locale" | "--input" | "--output") {
+                skip_next = true;
+            }
+            i += 1;
+            continue;
+        }
+
+        // 检查文件扩展名（不区分大小写）
+        let lower = token.to_lowercase();
+        for ext in &office_exts {
+            let ext_with_dot = format!(".{}", ext);
+            if lower.ends_with(&ext_with_dot) {
+                return Some(std::path::PathBuf::from(token));
+            }
+        }
+
+        i += 1;
+    }
+
+    None
+}
+
 /// 执行内置 officecli 工具
 /// agent_loop 在同步上下文中调用，内部用 async_runtime::block_on 桥接
 fn execute_officecli(args: &Value, state: &AppState) -> memos_core::CoreResult<Value> {
@@ -758,6 +816,50 @@ fn execute_officecli(args: &Value, state: &AppState) -> memos_core::CoreResult<V
         .unwrap_or_else(|| std::path::Path::new("."))
         .to_path_buf();
     let binary_path_owned = binary_path.clone();
+
+    // 尝试从 command 中提取 office 文档路径，启动 watch 预览服务
+    // 对 watch/unwatch 命令本身跳过（避免递归启动）
+    if let Some(file) = extract_office_file(&cli_args) {
+        let file_abs = if file.is_absolute() {
+            file.clone()
+        } else {
+            cwd.join(&file)
+        };
+        if file_abs.exists() {
+            // 同步启动 watch 子进程（spawn 是快速操作，watch 进程本身会异步运行）
+            match state.officecli_watch.ensure_watching(&binary_path, &file_abs, &cwd) {
+                Ok(started) => {
+                    if started {
+                        tracing::info!(
+                            file = %file_abs.display(),
+                            "officecli watch: 预览服务已启动"
+                        );
+                    }
+                    // 在子线程打开预览窗口（避免阻塞 agent loop；窗口创建可能涉及 UI 线程通信）
+                    let app_handle_clone = state.app_handle().clone();
+                    std::thread::spawn(move || {
+                        crate::officecli_watch::open_preview_window(&app_handle_clone);
+                    });
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        file = %file_abs.display(),
+                        "officecli watch: 启动预览服务失败: {}", e
+                    );
+                    // 即使 watch 启动失败也尝试打开窗口（用户可能已经手动启动）
+                    let app_handle_clone = state.app_handle().clone();
+                    std::thread::spawn(move || {
+                        crate::officecli_watch::open_preview_window(&app_handle_clone);
+                    });
+                }
+            }
+        } else {
+            tracing::debug!(
+                file = %file_abs.display(),
+                "officecli watch: 文件不存在，跳过启动 watch"
+            );
+        }
+    }
 
     async_runtime::block_on(async move {
         let mut cmd = tokio::process::Command::new(&binary_path_owned);
@@ -1094,6 +1196,59 @@ mod tests {
     fn test_split_shell_args_extra_whitespace() {
         let args = split_shell_args("  create   report.pptx  ");
         assert_eq!(args, vec!["create", "report.pptx"]);
+    }
+
+    #[test]
+    fn test_extract_office_file_basic() {
+        let args = split_shell_args("get report.pptx /slide[1]");
+        let file = extract_office_file(&args).unwrap();
+        assert_eq!(file, std::path::PathBuf::from("report.pptx"));
+    }
+
+    #[test]
+    fn test_extract_office_file_quoted_path() {
+        let args = split_shell_args("get \"my doc.docx\" /body/p[1]");
+        let file = extract_office_file(&args).unwrap();
+        assert_eq!(file, std::path::PathBuf::from("my doc.docx"));
+    }
+
+    #[test]
+    fn test_extract_office_file_with_options() {
+        let args = split_shell_args("get deck.pptx /slide[1] --json --port 26315");
+        let file = extract_office_file(&args).unwrap();
+        assert_eq!(file, std::path::PathBuf::from("deck.pptx"));
+    }
+
+    #[test]
+    fn test_extract_office_file_skips_watch_subcommand() {
+        let args = split_shell_args("watch report.pptx");
+        assert!(extract_office_file(&args).is_none());
+    }
+
+    #[test]
+    fn test_extract_office_file_skips_unwatch_subcommand() {
+        let args = split_shell_args("unwatch report.pptx");
+        assert!(extract_office_file(&args).is_none());
+    }
+
+    #[test]
+    fn test_extract_office_file_xlsx_extension() {
+        let args = split_shell_args("get data.xlsx /sheet[1]");
+        let file = extract_office_file(&args).unwrap();
+        assert_eq!(file, std::path::PathBuf::from("data.xlsx"));
+    }
+
+    #[test]
+    fn test_extract_office_file_no_file() {
+        let args = split_shell_args("help pptx slide");
+        assert!(extract_office_file(&args).is_none());
+    }
+
+    #[test]
+    fn test_extract_office_file_case_insensitive() {
+        let args = split_shell_args("get REPORT.PPTX /slide[1]");
+        let file = extract_office_file(&args).unwrap();
+        assert_eq!(file, std::path::PathBuf::from("REPORT.PPTX"));
     }
 
     #[test]

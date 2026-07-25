@@ -9,6 +9,7 @@ mod file_storage;
 pub mod lan;
 mod llm_runner;
 mod mcp;
+mod officecli_watch;
 mod protocol;
 mod state;
 mod thumbnail;
@@ -83,7 +84,15 @@ fn cleanup_app_resources(app_handle: &tauri::AppHandle) {
     stop_lan_with_timeout(app_handle);
     stop_llm_runner(app_handle);
     stop_mcp_with_timeout(app_handle);
+    stop_officecli_watch(app_handle);
     tracing::info!(pid = current_pid(), "退出清理：完成");
+}
+
+/// 退出时停止所有 officecli watch 子进程
+fn stop_officecli_watch(app_handle: &tauri::AppHandle) {
+    let state = app_handle.state::<AppState>();
+    tracing::info!(pid = current_pid(), "退出清理：停止 officecli watch 进程");
+    state.officecli_watch.stop_all();
 }
 
 /// 退出时停止本地 MCP 服务器
@@ -265,6 +274,7 @@ fn main() {
                 config_store: std::sync::Mutex::new(config_store),
                 workspace_registry: std::sync::Mutex::new(workspace_registry),
                 config_dir,
+                officecli_watch: crate::officecli_watch::OfficecliWatchManager::new(),
             });
 
             // 6. 根据 active workspace 决定后续流程

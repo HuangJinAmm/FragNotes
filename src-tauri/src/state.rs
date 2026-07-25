@@ -4,6 +4,7 @@ use crate::ai::pending_confirmations::PendingConfirmations;
 use crate::lan::LanState;
 use crate::llm_runner::LlmRunnerState;
 use crate::mcp::McpState;
+use crate::officecli_watch::OfficecliWatchManager;
 use crate::workspace::WorkspaceRegistry;
 use memos_core::skill::Skill;
 use memos_core::{ConfigStore, Store};
@@ -37,6 +38,8 @@ pub struct AppState {
     pub workspace_registry: Mutex<WorkspaceRegistry>,
     /// 引导目录（Tauri app_config_dir），存放 app_config.db 和 workspaces.json
     pub config_dir: PathBuf,
+    /// officecli watch 子进程管理器（单例，同时只 watch 一个文件）
+    pub officecli_watch: OfficecliWatchManager,
 }
 
 impl AppState {

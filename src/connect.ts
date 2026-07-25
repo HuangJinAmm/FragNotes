@@ -790,7 +790,15 @@ export const memoServiceClient = {
 
 // ============ User Service 适配 ============
 
-const LOCAL_USER = {
+// 本地用户资料持久化在 app_setting 表（app_config.db，跨工作空间共享）
+// key: "user_profile:local"，value: JSON 序列化的可变字段
+const USER_PROFILE_KEY = "user_profile:local";
+
+// 可持久化的用户字段白名单（其他字段如 role/state/createTime 不持久化）
+const PERSISTENT_FIELDS = ["username", "displayName", "email", "avatarUrl", "description"] as const;
+
+// 模块级 mutable 用户状态（每次应用启动时从持久化存储恢复）
+const LOCAL_USER: Record<string, any> = {
   name: "users/local",
   username: "local",
   displayName: "Local",
@@ -800,15 +808,67 @@ const LOCAL_USER = {
   updateTime: ts(Math.floor(Date.now() / 1000)),
 };
 
+// 标记是否已从持久化存储加载过（避免每次 getUser 都查 DB）
+let userProfileLoaded = false;
+
+// 正在加载的 Promise（防止并发竞态：多个 getUser 同时触发时共享同一个加载任务）
+let userProfileLoadingPromise: Promise<void> | null = null;
+
+// 从 app_setting 加载持久化的用户资料并合并到 LOCAL_USER
+// 使用 Promise 去重确保并发安全：多个调用者会等待同一个加载任务完成
+async function loadUserProfileOnce(): Promise<void> {
+  if (userProfileLoaded) return;
+  if (userProfileLoadingPromise) {
+    await userProfileLoadingPromise;
+    return;
+  }
+  userProfileLoadingPromise = (async () => {
+    try {
+      const json = await invoke<string | null>("get_app_setting", { key: USER_PROFILE_KEY });
+      if (json) {
+        const persisted = JSON.parse(json);
+        // 仅合并白名单字段，避免覆盖 role/state 等系统字段
+        for (const field of PERSISTENT_FIELDS) {
+          if (persisted[field] != null && persisted[field] !== "") {
+            LOCAL_USER[field] = persisted[field];
+          }
+        }
+      }
+      userProfileLoaded = true;
+    } catch (e) {
+      // 加载失败不阻塞，使用默认值，但允许下次重试
+      userProfileLoaded = true;
+      console.warn("Failed to load user profile:", e);
+    } finally {
+      userProfileLoadingPromise = null;
+    }
+  })();
+  await userProfileLoadingPromise;
+}
+
+// 把可变字段写回持久化存储
+async function saveUserProfile(user: Record<string, any>): Promise<void> {
+  const persisted: Record<string, any> = {};
+  for (const field of PERSISTENT_FIELDS) {
+    persisted[field] = user[field] ?? "";
+  }
+  await invoke("upsert_app_setting", {
+    req: { key: USER_PROFILE_KEY, value: JSON.stringify(persisted) },
+  });
+}
+
 export const userServiceClient = {
   async getUser(_req: any): Promise<any> {
-    return LOCAL_USER;
+    await loadUserProfileOnce();
+    return { ...LOCAL_USER };
   },
   async listUsers(_req: any): Promise<any> {
-    return { users: [LOCAL_USER] };
+    await loadUserProfileOnce();
+    return { users: [{ ...LOCAL_USER }] };
   },
   async batchGetUsers(_req: any): Promise<any> {
-    return { users: [LOCAL_USER] };
+    await loadUserProfileOnce();
+    return { users: [{ ...LOCAL_USER }] };
   },
   async getUserStats(_req: any): Promise<any> {
     // 并行获取 tag 计数和 memo 时间戳
@@ -849,7 +909,22 @@ export const userServiceClient = {
     };
   },
   async updateUser(req: any): Promise<any> {
-    return { ...LOCAL_USER, ...req.user };
+    await loadUserProfileOnce();
+    // 合并更新到内存状态
+    const incoming = req.user || {};
+    for (const field of PERSISTENT_FIELDS) {
+      if (incoming[field] !== undefined) {
+        LOCAL_USER[field] = incoming[field];
+      }
+    }
+    LOCAL_USER.updateTime = ts(Math.floor(Date.now() / 1000));
+    // 持久化到 app_setting（app_config.db）
+    try {
+      await saveUserProfile(LOCAL_USER);
+    } catch (e) {
+      console.error("Failed to persist user profile:", e);
+    }
+    return { ...LOCAL_USER };
   },
   async deleteUser(_req: any): Promise<void> {},
   async listUserSettings(_req: any): Promise<any> {

@@ -11,6 +11,7 @@ pub mod file_storage;
 pub mod lan;
 pub mod llm_runner;
 pub mod mcp;
+pub mod officecli_watch;
 pub mod state;
 pub mod thumbnail;
 pub mod workspace;

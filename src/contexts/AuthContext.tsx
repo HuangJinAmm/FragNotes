@@ -69,13 +69,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isLoading: true,
   });
 
-  /// 从 IPC 加载 user settings
+  /// 从 IPC 加载 user settings 和用户资料（持久化的 displayName/avatarUrl 等）
   const loadSettings = useCallback(async () => {
     try {
-      const { settings } = await userServiceClient.listUserSettings({ parent: LOCAL_USER_NAME });
-      const parsed = parseSettings(settings || []);
+      const [settingsResult, persistedUser] = await Promise.all([
+        userServiceClient.listUserSettings({ parent: LOCAL_USER_NAME }),
+        userServiceClient.getUser({ name: LOCAL_USER_NAME }),
+      ]);
+      const parsed = parseSettings(settingsResult.settings || []);
+      // 直接使用 getUser 返回的对象（已是完整 User 形状，含持久化字段）
+      // 不用 create(UserSchema, ...) 转换，避免 bigint 序列化问题
       setState((prev) => ({
         ...prev,
+        currentUser: persistedUser as User,
         userGeneralSetting: parsed.general,
         userTagsSetting: parsed.tags,
         isInitialized: true,
