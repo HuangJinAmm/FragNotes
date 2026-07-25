@@ -439,12 +439,15 @@ pub async fn suggest_tags(
         )
     };
 
-    let ai_text = crate::ai::llm_call::call_provider(
-        &store,
-        provider_id.as_deref(),
-        system_prompt,
-        &user_message,
-    )?;
+    let ai_text = {
+        let config_store = state.config_store();
+        crate::ai::llm_call::call_provider(
+            &config_store,
+            provider_id.as_deref(),
+            system_prompt,
+            &user_message,
+        )?
+    };
 
     // 解析 AI 返回的标签（逗号或顿号分隔），去除 # 前缀，排除笔记中已有的标签
     let suggested: Vec<String> = ai_text

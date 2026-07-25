@@ -6,6 +6,7 @@ export const ROUTES = {
   SETTING: "/setting",
   DISCOVER: "/discover",
   REVIEW: "/review",
+  WORKSPACE_PICKER: "/workspace-picker",
 } as const;
 
 export type RouteKey = keyof typeof ROUTES;

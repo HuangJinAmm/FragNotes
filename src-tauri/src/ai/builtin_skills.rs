@@ -21,11 +21,50 @@ const RAW_FILES: &[(&str, &str)] = &[
         "semantic_search_tips",
         include_str!("../../skills/semantic_search_tips.md"),
     ),
+    // OfficeCLI 内置 skills —— 与 officecli 工具关联
     (
-        "office_cli_guide",
-        include_str!("../../skills/office_cli_guide.md"),
+        "officecli-academic-paper",
+        include_str!("../../skills/office-cli/officecli-academic-paper/SKILL.md"),
+    ),
+    (
+        "officecli-data-dashboard",
+        include_str!("../../skills/office-cli/officecli-data-dashboard/SKILL.md"),
+    ),
+    (
+        "officecli-docx",
+        include_str!("../../skills/office-cli/officecli-docx/SKILL.md"),
+    ),
+    (
+        "officecli-financial-model",
+        include_str!("../../skills/office-cli/officecli-financial-model/SKILL.md"),
+    ),
+    (
+        "officecli-pitch-deck",
+        include_str!("../../skills/office-cli/officecli-pitch-deck/SKILL.md"),
+    ),
+    (
+        "officecli-pptx",
+        include_str!("../../skills/office-cli/officecli-pptx/SKILL.md"),
+    ),
+    (
+        "officecli-word-form",
+        include_str!("../../skills/office-cli/officecli-word-form/SKILL.md"),
+    ),
+    (
+        "officecli-xlsx",
+        include_str!("../../skills/office-cli/officecli-xlsx/SKILL.md"),
     ),
 ];
+
+/// 去除字符串两侧的成对双引号（YAML 常见写法）
+fn strip_quotes(s: &str) -> &str {
+    let s = s.trim();
+    if s.len() >= 2 && s.starts_with('"') && s.ends_with('"') {
+        &s[1..s.len() - 1]
+    } else {
+        s
+    }
+}
 
 /// 解析单个 skill 文件的 frontmatter + body
 fn parse(raw: &str) -> Result<Skill, String> {
@@ -48,17 +87,17 @@ fn parse(raw: &str) -> Result<Skill, String> {
     for line in frontmatter.lines() {
         let line = line.trim();
         if let Some(v) = line.strip_prefix("id:") {
-            id = Some(v.trim().to_string());
+            id = Some(strip_quotes(v.trim()).to_string());
         } else if let Some(v) = line.strip_prefix("name:") {
-            name = Some(v.trim().to_string());
+            name = Some(strip_quotes(v.trim()).to_string());
         } else if let Some(v) = line.strip_prefix("description:") {
-            description = Some(v.trim().to_string());
+            description = Some(strip_quotes(v.trim()).to_string());
         } else if let Some(v) = line.strip_prefix("tools:") {
             // 格式: [a, b, c]
             let v = v.trim().trim_start_matches('[').trim_end_matches(']');
             tools = v
                 .split(',')
-                .map(|s| s.trim().to_string())
+                .map(|s| strip_quotes(s.trim()).to_string())
                 .filter(|s| !s.is_empty())
                 .collect();
         }
@@ -105,6 +144,25 @@ mod tests {
     fn test_builtin_skills_loaded() {
         let skills = load_builtin_skills();
         assert!(!skills.is_empty(), "至少应加载一个内置 skill");
+        // 2 个原有 skill + 8 个 office-cli skill = 10
+        assert_eq!(skills.len(), 10, "应加载 10 个内置 skill");
+    }
+
+    #[test]
+    fn test_officecli_skills_have_officecli_tool() {
+        let skills = load_builtin_skills();
+        let officecli_skills: Vec<_> = skills
+            .iter()
+            .filter(|s| s.id.starts_with("b-officecli-"))
+            .collect();
+        assert_eq!(officecli_skills.len(), 8, "应有 8 个 officecli 相关 skill");
+        for s in &officecli_skills {
+            assert!(
+                s.tools.contains(&"officecli".to_string()),
+                "skill {} 的 tools 应包含 officecli",
+                s.id
+            );
+        }
     }
 
     #[test]
@@ -128,6 +186,22 @@ mod tests {
         assert_eq!(s.description, "a test");
         assert_eq!(s.tools, vec!["a".to_string(), "b".to_string()]);
         assert_eq!(s.body, "# Body\ncontent");
+    }
+
+    #[test]
+    fn test_parse_quoted_description() {
+        let raw = "---\nid: b-test\nname: Test\ndescription: \"a quoted test\"\ntools: [\"a\", b]\n---\n# Body";
+        let s = parse(raw).unwrap();
+        assert_eq!(s.description, "a quoted test");
+        assert_eq!(s.tools, vec!["a".to_string(), "b".to_string()]);
+    }
+
+    #[test]
+    fn test_strip_quotes() {
+        assert_eq!(strip_quotes("\"hello\""), "hello");
+        assert_eq!(strip_quotes("hello"), "hello");
+        assert_eq!(strip_quotes("\"unclosed"), "\"unclosed");
+        assert_eq!(strip_quotes(""), "");
     }
 
     #[test]

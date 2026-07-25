@@ -1161,6 +1161,41 @@
         "validation-timeout": "Timeout must be between 1000 and 600000 ms.",
         "save-failed": "Failed to save tool."
       }
+    },
+    "workspace": {
+      "label": "Workspace"
+    }
+  },
+  "workspace": {
+    "picker": {
+      "title": "Choose Workspace",
+      "empty": "No workspace yet. Create one to get started.",
+      "new": "New Workspace",
+      "open": "Open existing folder",
+      "name": "Workspace name",
+      "path": "Path",
+      "create": "Create",
+      "selectFolder": "Choose folder"
+    },
+    "switcher": {
+      "switching": "Switching workspace...",
+      "switch": "Switch to workspace",
+      "manage": "Manage workspaces",
+      "new": "New workspace"
+    },
+    "settings": {
+      "title": "Workspace",
+      "name": "Name",
+      "path": "Path",
+      "status": "Status",
+      "statusValid": "Valid",
+      "statusInvalid": "Invalid",
+      "rename": "Rename",
+      "openInExplorer": "Open in file manager",
+      "selectFolder": "Select folder",
+      "delete": "Delete",
+      "deleteConfirm": "Removing a workspace only removes it from the list; disk files are not deleted. Continue?",
+      "new": "New workspace"
     }
   },
   "tag": {

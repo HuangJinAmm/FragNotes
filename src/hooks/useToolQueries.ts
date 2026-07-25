@@ -51,7 +51,7 @@ export function useSetToolEnabled() {
   });
 }
 
-/** 合并内置 10 个工具名 + 所有用户工具名（含禁用），供 SkillEditor 多选用 */
+/** 合并内置 11 个工具名 + 所有用户工具名（含禁用），供 SkillEditor 多选用 */
 export function useKnownToolNames() {
   const { data: userTools } = useToolList({ enabled: false });
   const userNames = (userTools ?? []).map((t) => t.name);

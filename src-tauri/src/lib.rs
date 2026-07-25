@@ -13,3 +13,4 @@ pub mod llm_runner;
 pub mod mcp;
 pub mod state;
 pub mod thumbnail;
+pub mod workspace;

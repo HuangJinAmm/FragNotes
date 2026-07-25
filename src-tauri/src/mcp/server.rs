@@ -178,8 +178,8 @@ fn ensure_state(app_handle: &AppHandle) -> Result<Arc<McpState>, McpError> {
         return Ok(Arc::clone(existing));
     }
     let config = {
-        let store = app_state.store();
-        crate::mcp::config::load_config(&store)
+        let config_store = app_state.config_store();
+        crate::mcp::config::load_config(&config_store)
     };
     let state = Arc::new(McpState::new(config));
     *guard = Some(Arc::clone(&state));

@@ -12,6 +12,7 @@ mod mcp;
 mod protocol;
 mod state;
 mod thumbnail;
+mod workspace;
 
 /// 在 main() 最早期设置 ONNX Runtime DLL 路径
 /// build.rs 通过 cargo:rustc-env 编译期注入路径，运行期设置环境变量供 ort load-dynamic 读取
@@ -26,7 +27,7 @@ fn setup_ort_dylib_path() {
 
 use state::AppState;
 use std::sync::atomic::Ordering;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 /// 退出时给清理逻辑一个有限窗口，避免卡死在后台任务收尾。
 const EXIT_CLEANUP_TIMEOUT_SECS: u64 = 2;
@@ -176,33 +177,80 @@ fn main() {
     tracing::info!(pid = current_pid(), "应用启动，控制台日志已启用");
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .register_uri_scheme_protocol("attachment", |ctx, request| {
             let state = ctx.app_handle().state::<AppState>();
             protocol::handle_attachment_request(state.inner(), &request)
         })
         .setup(|app| {
             tracing::info!(pid = current_pid(), "setup: begin");
-            // 应用数据统一存储在用户目录下的 localFragNote 文件夹
-            #[allow(deprecated)]
-            let data_dir = dirs::home_dir()
-                .expect("无法获取用户目录")
-                .join("localFragNote");
-            std::fs::create_dir_all(&data_dir).expect("无法创建数据目录");
-            let db_path = data_dir.join("memos.db");
-            tracing::info!("数据库路径: {}", db_path.display());
 
-            let store = memos_core::Store::open(&db_path).expect("无法打开 Store");
+            // 1. 计算 config_dir（Tauri app_config_dir）
+            let config_dir = app
+                .path()
+                .app_config_dir()
+                .expect("无法获取 app_config_dir");
+            std::fs::create_dir_all(&config_dir).expect("无法创建 config 目录");
+            tracing::info!("config 目录: {}", config_dir.display());
 
-            // 从配置读取附件目录：绝对路径直接使用，相对路径基于 data_dir
-            let storage_config = commands::setting::load_storage_config(&store);
-            let attachments_dir = if std::path::Path::new(&storage_config.local_storage_path).is_absolute() {
-                std::path::PathBuf::from(&storage_config.local_storage_path)
+            // 2. 打开 app_config.db（ConfigStore）
+            let config_db_path = config_dir.join("app_config.db");
+            tracing::info!("ConfigStore 路径: {}", config_db_path.display());
+            let config_store =
+                memos_core::ConfigStore::open(&config_db_path).expect("无法打开 ConfigStore");
+
+            // 3. 加载 WorkspaceRegistry
+            let workspace_registry = workspace::WorkspaceRegistry::load(&config_dir);
+            let active_ws = workspace_registry.get_active().cloned();
+            let has_valid_workspace = active_ws
+                .as_ref()
+                .map(|ws| {
+                    let status = workspace::WorkspaceRegistry::validate(&ws.path);
+                    if status != workspace::WorkspaceStatus::Valid {
+                        tracing::warn!(
+                            "active workspace 路径无效: {} (status: {:?})",
+                            ws.path.display(),
+                            status
+                        );
+                        false
+                    } else {
+                        true
+                    }
+                })
+                .unwrap_or(false);
+
+            // 4. 根据 active workspace 决定初始化方式
+            let (store, attachments_dir) = if has_valid_workspace {
+                let ws = active_ws.as_ref().unwrap();
+                let db_path = ws.path.join("memos.db");
+                tracing::info!("工作空间数据库路径: {}", db_path.display());
+                let store = memos_core::Store::open(&db_path).expect("无法打开 Store");
+
+                // 从 config_store 读取存储配置，计算 attachments_dir
+                // 注意：load_storage_config 当前签名接收 &Store，Phase 4 会改为 &ConfigStore
+                let storage_config = commands::setting::load_storage_config(&config_store);
+                let attachments_dir =
+                    if std::path::Path::new(&storage_config.local_storage_path).is_absolute() {
+                        std::path::PathBuf::from(&storage_config.local_storage_path)
+                    } else {
+                        ws.path.join(&storage_config.local_storage_path)
+                    };
+                std::fs::create_dir_all(&attachments_dir).expect("无法创建附件目录");
+                tracing::info!(
+                    "附件目录: {}（模板: {}）",
+                    attachments_dir.display(),
+                    storage_config.filepath_template
+                );
+                (store, attachments_dir)
             } else {
-                data_dir.join(&storage_config.local_storage_path)
+                // 无有效 active workspace → 用 in-memory Store placeholder
+                tracing::info!("无有效 active workspace，使用 in-memory Store placeholder");
+                let store =
+                    memos_core::Store::open_in_memory().expect("无法创建内存 Store placeholder");
+                (store, std::path::PathBuf::new())
             };
-            std::fs::create_dir_all(&attachments_dir).expect("无法创建附件目录");
-            tracing::info!("附件目录: {}（模板: {}）", attachments_dir.display(), storage_config.filepath_template);
 
+            // 5. 注册 AppState
             app.manage(AppState {
                 store: std::sync::Mutex::new(store),
                 attachments_dir,
@@ -214,75 +262,84 @@ fn main() {
                 cleanup_started: std::sync::atomic::AtomicBool::new(false),
                 pending_confirmations: crate::ai::pending_confirmations::PendingConfirmations::new(),
                 app_handle: app.handle().clone(),
+                config_store: std::sync::Mutex::new(config_store),
+                workspace_registry: std::sync::Mutex::new(workspace_registry),
+                config_dir,
             });
 
-            // 根据持久化设置决定是否在启动时拉起 LAN 模块
-            let lan_enabled = {
-                let state = app.state::<AppState>();
-                let store = state.store();
-                lan::endpoint::load_enabled(&store)
-            };
-            if lan_enabled {
-                let app_handle = app.handle().clone();
-                tracing::info!("setup: 检测到 LAN 已启用，开始启动 LAN 模块");
-                let result = tauri::async_runtime::block_on(async {
-                    lan::endpoint::start_lan_module(&app_handle).await
-                });
-                match result {
-                    Ok(_) => tracing::info!("LAN 模块启动成功"),
-                    Err(e) => tracing::warn!("LAN 模块启动失败（应用其他功能不受影响）: {}", e),
-                }
-            }
-
-            // 根据持久化配置决定是否在启动时拉起本地 LLM 服务
-            let llm_auto_start = {
-                let state = app.state::<AppState>();
-                let store = state.store();
-                llm_runner::load_config(&store).auto_start
-            };
-            if llm_auto_start {
-                let app_handle = app.handle().clone();
-                tracing::info!("setup: 检测到 LLM 启动器配置 auto_start=true，开始启动本地 LLM 服务");
-                tauri::async_runtime::spawn(async move {
-                    let runner = match commands::llm_runner::llm_start(app_handle.clone()).await {
-                        Ok(r) => r,
-                        Err(e) => {
-                            tracing::warn!("LLM 服务启动失败（应用其他功能不受影响）: {}", e);
-                            return;
-                        }
-                    };
-                    tracing::info!(
-                        pid = current_pid(),
-                        running = runner.running,
-                        "LLM 服务启动流程结束"
-                    );
-                });
-            }
-
-            // 根据持久化配置决定是否在启动时拉起 MCP 服务器
-            let mcp_auto_start = {
-                let state = app.state::<AppState>();
-                let store = state.store();
-                mcp::load_config(&store).auto_start
-            };
-            if mcp_auto_start {
-                let app_handle = app.handle().clone();
-                tracing::info!("setup: 检测到 MCP 配置 auto_start=true，开始启动 MCP 服务器");
-                tauri::async_runtime::spawn(async move {
-                    match commands::mcp::mcp_start(app_handle.clone()).await {
-                        Ok(status) => {
-                            tracing::info!(
-                                pid = current_pid(),
-                                running = status.running,
-                                endpoint = %status.endpoint_url,
-                                "MCP 服务器启动流程结束"
-                            );
-                        }
-                        Err(e) => {
-                            tracing::warn!("MCP 服务器启动失败（应用其他功能不受影响）: {}", e);
-                        }
+            // 6. 根据 active workspace 决定后续流程
+            if !has_valid_workspace {
+                // 无有效 active workspace，emit "show_workspace_picker" 事件
+                tracing::info!("setup: 无有效 active workspace，emit show_workspace_picker");
+                let _ = app.handle().emit("show_workspace_picker", ());
+            } else {
+                // 有有效 active workspace，根据配置启动 LAN/LLM/MCP
+                // LAN/LLM/MCP 配置现在从 config_store 读取（Phase 4 会更新这些函数签名）
+                let lan_enabled = {
+                    let state = app.state::<AppState>();
+                    let config_store = state.config_store();
+                    lan::endpoint::load_enabled(&config_store)
+                };
+                if lan_enabled {
+                    let app_handle = app.handle().clone();
+                    tracing::info!("setup: 检测到 LAN 已启用，开始启动 LAN 模块");
+                    let result = tauri::async_runtime::block_on(async {
+                        lan::endpoint::start_lan_module(&app_handle).await
+                    });
+                    match result {
+                        Ok(_) => tracing::info!("LAN 模块启动成功"),
+                        Err(e) => tracing::warn!("LAN 模块启动失败（应用其他功能不受影响）: {}", e),
                     }
-                });
+                }
+
+                let llm_auto_start = {
+                    let state = app.state::<AppState>();
+                    let config_store = state.config_store();
+                    llm_runner::load_config(&config_store).auto_start
+                };
+                if llm_auto_start {
+                    let app_handle = app.handle().clone();
+                    tracing::info!("setup: 检测到 LLM 启动器配置 auto_start=true，开始启动本地 LLM 服务");
+                    tauri::async_runtime::spawn(async move {
+                        let runner = match commands::llm_runner::llm_start(app_handle.clone()).await {
+                            Ok(r) => r,
+                            Err(e) => {
+                                tracing::warn!("LLM 服务启动失败（应用其他功能不受影响）: {}", e);
+                                return;
+                            }
+                        };
+                        tracing::info!(
+                            pid = current_pid(),
+                            running = runner.running,
+                            "LLM 服务启动流程结束"
+                        );
+                    });
+                }
+
+                let mcp_auto_start = {
+                    let state = app.state::<AppState>();
+                    let config_store = state.config_store();
+                    mcp::load_config(&config_store).auto_start
+                };
+                if mcp_auto_start {
+                    let app_handle = app.handle().clone();
+                    tracing::info!("setup: 检测到 MCP 配置 auto_start=true，开始启动 MCP 服务器");
+                    tauri::async_runtime::spawn(async move {
+                        match commands::mcp::mcp_start(app_handle.clone()).await {
+                            Ok(status) => {
+                                tracing::info!(
+                                    pid = current_pid(),
+                                    running = status.running,
+                                    endpoint = %status.endpoint_url,
+                                    "MCP 服务器启动流程结束"
+                                );
+                            }
+                            Err(e) => {
+                                tracing::warn!("MCP 服务器启动失败（应用其他功能不受影响）: {}", e);
+                            }
+                        }
+                    });
+                }
             }
 
             tracing::info!(pid = current_pid(), "setup: end");
@@ -386,6 +443,13 @@ fn main() {
             // import/export
             commands::import_export::export_memos_json,
             commands::import_export::import_memos_json,
+            // workspace management
+            commands::workspace::workspace_list,
+            commands::workspace::workspace_create,
+            commands::workspace::workspace_switch,
+            commands::workspace::workspace_rename,
+            commands::workspace::workspace_delete,
+            commands::workspace::workspace_open_in_explorer,
             // local llm runner
             commands::llm_runner::llm_get_config,
             commands::llm_runner::llm_update_config,

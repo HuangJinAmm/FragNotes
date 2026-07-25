@@ -11,6 +11,8 @@ pub mod markdown;
 pub mod memo;
 pub mod memo_relation;
 pub mod migration;
+pub mod config_migration;
+pub mod config_store;
 pub mod reaction;
 pub mod review;
 pub mod setting;
@@ -21,4 +23,5 @@ pub mod tag;
 pub mod types;
 
 pub use error::{CoreError, CoreResult};
+pub use config_store::ConfigStore;
 pub use store::Store;

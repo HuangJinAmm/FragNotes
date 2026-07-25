@@ -22,7 +22,11 @@ interface MemoPreviewProps {
   truncate?: boolean;
 }
 
-const STUB_CONTEXT: MemoViewContextValue = {
+/**
+ * Readonly stub context，供不在 MemoView 树内但需要使用 MemoMarkdownRenderer
+ * 的场景（如远端笔记预览）使用。所有交互均为 no-op。
+ */
+export const STUB_MEMO_VIEW_CONTEXT: MemoViewContextValue = {
   memo: create(MemoSchema),
   creator: undefined,
   currentUser: undefined,
@@ -132,7 +136,7 @@ const MemoPreview = ({
   );
 
   return (
-    <MemoViewContext.Provider value={STUB_CONTEXT}>
+    <MemoViewContext.Provider value={STUB_MEMO_VIEW_CONTEXT}>
       <div
         className={cn(
           "pointer-events-none",

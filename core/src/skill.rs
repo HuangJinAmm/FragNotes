@@ -5,8 +5,8 @@
 //! - User（用户）：存 skill 表，可增删改
 
 use crate::error::{CoreError, CoreResult};
-use crate::Store;
-use rusqlite::{params, Connection};
+use crate::{ConfigStore, Store};
+use rusqlite::params;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -33,27 +33,40 @@ pub struct Skill {
 
 pub const DISABLED_BUILTIN_KEY: &str = "ai_skill_disabled_builtin";
 
-fn load_disabled_builtin(conn: &Connection, store: &Store) -> Vec<String> {
-    store
-        .setting
-        .app
-        .get(conn, DISABLED_BUILTIN_KEY)
-        .ok()
-        .flatten()
-        .and_then(|s| serde_json::from_str::<Vec<String>>(&s).ok())
+fn load_disabled_builtin(config_store: &ConfigStore) -> Vec<String> {
+    config_store
+        .with_conn(|conn| {
+            Ok(config_store
+                .setting
+                .app
+                .get(conn, DISABLED_BUILTIN_KEY)
+                .ok()
+                .flatten()
+                .and_then(|s| serde_json::from_str::<Vec<String>>(&s).ok())
+                .unwrap_or_default())
+        })
         .unwrap_or_default()
 }
 
-fn save_disabled_builtin(conn: &Connection, store: &Store, ids: &[String]) -> CoreResult<()> {
+fn save_disabled_builtin(config_store: &ConfigStore, ids: &[String]) -> CoreResult<()> {
     let json = serde_json::to_string(ids)
         .map_err(|e| CoreError::Other(format!("序列化禁用列表失败: {e}")))?;
-    store.setting.app.upsert(conn, DISABLED_BUILTIN_KEY, &json)
+    config_store.with_conn(|conn| {
+        config_store
+            .setting
+            .app
+            .upsert(conn, DISABLED_BUILTIN_KEY, &json)
+    })
 }
 
 /// 列出所有 skill（合并内置 + 用户），按 name 排序
-pub fn list(builtin: &[Skill], store: &Store) -> CoreResult<Vec<Skill>> {
+pub fn list(
+    builtin: &[Skill],
+    store: &Store,
+    config_store: &ConfigStore,
+) -> CoreResult<Vec<Skill>> {
     store.with_conn(|conn| {
-        let disabled = load_disabled_builtin(conn, store);
+        let disabled = load_disabled_builtin(config_store);
         let mut result: Vec<Skill> = builtin
             .iter()
             .map(|s| Skill {
@@ -90,19 +103,28 @@ pub fn list(builtin: &[Skill], store: &Store) -> CoreResult<Vec<Skill>> {
 }
 
 /// 仅返回 enabled 的 skill
-pub fn list_enabled(builtin: &[Skill], store: &Store) -> CoreResult<Vec<Skill>> {
-    Ok(list(builtin, store)?
+pub fn list_enabled(
+    builtin: &[Skill],
+    store: &Store,
+    config_store: &ConfigStore,
+) -> CoreResult<Vec<Skill>> {
+    Ok(list(builtin, store, config_store)?
         .into_iter()
         .filter(|s| s.enabled)
         .collect())
 }
 
 /// 按 id 查找（合并内置 + 用户）
-pub fn get(builtin: &[Skill], store: &Store, id: &str) -> CoreResult<Option<Skill>> {
+pub fn get(
+    builtin: &[Skill],
+    store: &Store,
+    config_store: &ConfigStore,
+    id: &str,
+) -> CoreResult<Option<Skill>> {
     store.with_conn(|conn| {
         // 先查内置
         if let Some(b) = builtin.iter().find(|s| s.id == id) {
-            let disabled = load_disabled_builtin(conn, store);
+            let disabled = load_disabled_builtin(config_store);
             return Ok(Some(Skill {
                 enabled: !disabled.contains(&b.id),
                 ..b.clone()
@@ -211,18 +233,21 @@ pub fn delete(store: &Store, id: &str) -> CoreResult<()> {
 }
 
 /// 设置启用状态。user skill 改 DB；builtin skill 改 app_setting 禁用列表。
-pub fn set_enabled(store: &Store, id: &str, enabled: bool) -> CoreResult<()> {
+pub fn set_enabled(
+    store: &Store,
+    config_store: &ConfigStore,
+    id: &str,
+    enabled: bool,
+) -> CoreResult<()> {
     if id.starts_with("b-") {
-        // 内置 skill：操作禁用列表
-        store.with_conn(|conn| {
-            let mut disabled = load_disabled_builtin(conn, store);
-            if enabled {
-                disabled.retain(|x| x != id);
-            } else if !disabled.contains(&id.to_string()) {
-                disabled.push(id.to_string());
-            }
-            save_disabled_builtin(conn, store, &disabled)
-        })
+        // 内置 skill：操作禁用列表（存于 app_config.db）
+        let mut disabled = load_disabled_builtin(config_store);
+        if enabled {
+            disabled.retain(|x| x != id);
+        } else if !disabled.contains(&id.to_string()) {
+            disabled.push(id.to_string());
+        }
+        save_disabled_builtin(config_store, &disabled)
     } else {
         store.with_conn(|conn| {
             conn.execute(
@@ -255,6 +280,7 @@ mod tests {
     #[test]
     fn test_create_and_get_user_skill() {
         let store = Store::open(":memory:").unwrap();
+        let config_store = ConfigStore::open_in_memory().unwrap();
         let s = Skill {
             id: "u-my".to_string(),
             name: "My".to_string(),
@@ -270,7 +296,7 @@ mod tests {
         assert_eq!(created.id, "u-my");
         assert!(created.created_ts > 0);
 
-        let got = get(&[], &store, "u-my").unwrap().unwrap();
+        let got = get(&[], &store, &config_store, "u-my").unwrap().unwrap();
         assert_eq!(got.name, "My");
         assert_eq!(got.tools, vec!["create_memo".to_string()]);
     }
@@ -295,6 +321,7 @@ mod tests {
     #[test]
     fn test_list_merges_builtin_and_user() {
         let store = Store::open(":memory:").unwrap();
+        let config_store = ConfigStore::open_in_memory().unwrap();
         let builtin = sample_builtin();
         create(
             &store,
@@ -311,7 +338,7 @@ mod tests {
             },
         )
         .unwrap();
-        let all = list(&builtin, &store).unwrap();
+        let all = list(&builtin, &store, &config_store).unwrap();
         assert_eq!(all.len(), 2);
         // 排序后 Alpha 在前
         assert_eq!(all[0].name, "Alpha");
@@ -344,16 +371,17 @@ mod tests {
     #[test]
     fn test_set_enabled_builtin_ok() {
         let store = Store::open(":memory:").unwrap();
+        let config_store = ConfigStore::open_in_memory().unwrap();
         // 禁用内置
-        set_enabled(&store, "b-test", false).unwrap();
+        set_enabled(&store, &config_store, "b-test", false).unwrap();
         let builtin = sample_builtin();
-        let all = list(&builtin, &store).unwrap();
+        let all = list(&builtin, &store, &config_store).unwrap();
         let b = all.iter().find(|s| s.id == "b-test").unwrap();
         assert!(!b.enabled);
 
         // 重新启用
-        set_enabled(&store, "b-test", true).unwrap();
-        let all = list(&builtin, &store).unwrap();
+        set_enabled(&store, &config_store, "b-test", true).unwrap();
+        let all = list(&builtin, &store, &config_store).unwrap();
         let b = all.iter().find(|s| s.id == "b-test").unwrap();
         assert!(b.enabled);
     }
@@ -361,6 +389,7 @@ mod tests {
     #[test]
     fn test_get_not_found() {
         let store = Store::open(":memory:").unwrap();
-        assert!(get(&[], &store, "nonexistent").unwrap().is_none());
+        let config_store = ConfigStore::open_in_memory().unwrap();
+        assert!(get(&[], &store, &config_store, "nonexistent").unwrap().is_none());
     }
 }

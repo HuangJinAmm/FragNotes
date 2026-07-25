@@ -33,6 +33,9 @@
       "icons/128x128@2x.png",
       "icons/icon.ico"
     ],
+    "resources": {
+      "skills/office-cli/officecli.exe": "skills/office-cli/officecli.exe"
+    },
     "windows": {
       "wix": {
         "language": "zh-CN"

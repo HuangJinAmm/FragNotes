@@ -1142,6 +1142,41 @@
         "validation-timeout": "超时时间必须在 1000-600000 之间",
         "save-failed": "保存失败"
       }
+    },
+    "workspace": {
+      "label": "工作空间"
+    }
+  },
+  "workspace": {
+    "picker": {
+      "title": "选择工作空间",
+      "empty": "还没有工作空间，请新建一个开始",
+      "new": "新建工作空间",
+      "open": "打开现有文件夹",
+      "name": "工作空间名称",
+      "path": "路径",
+      "create": "创建",
+      "selectFolder": "选择文件夹"
+    },
+    "switcher": {
+      "switching": "正在切换工作空间...",
+      "switch": "切换到工作空间",
+      "manage": "管理工作空间",
+      "new": "新建工作空间"
+    },
+    "settings": {
+      "title": "工作空间",
+      "name": "名称",
+      "path": "路径",
+      "status": "状态",
+      "statusValid": "有效",
+      "statusInvalid": "无效",
+      "rename": "重命名",
+      "openInExplorer": "在文件管理器中打开",
+      "selectFolder": "选择文件夹",
+      "delete": "删除",
+      "deleteConfirm": "删除工作空间将仅从列表中移除，不会删除磁盘文件。确定继续吗？",
+      "new": "新建工作空间"
     }
   },
   "tag": {

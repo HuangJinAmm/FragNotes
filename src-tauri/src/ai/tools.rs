@@ -9,11 +9,12 @@ use memos_core::review::{self, ReviewCard};
 use memos_core::skill::Skill;
 use memos_core::tool::Tool;
 use memos_core::types::{MemoRelationType, RowStatus, Visibility};
-use memos_core::Store;
+use memos_core::{ConfigStore, Store};
 use serde_json::{json, Value};
 use std::process::Stdio;
 use std::time::Duration;
 use tauri::async_runtime;
+use tauri::Manager;
 
 /// 返回 OpenAI function-calling 格式的工具定义
 pub fn tool_definitions(user_tools: &[Tool]) -> Vec<Value> {
@@ -174,6 +175,23 @@ pub fn tool_definitions(user_tools: &[Tool]) -> Vec<Value> {
                 }
             }
         }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "officecli",
+                "description": "AI-friendly CLI for Office documents (.docx, .xlsx, .pptx). Run 'officecli help' for schema-driven capability reference. Supports: open/close (resident process), watch/unwatch (live preview), view, get, query, set, add, remove, move, swap, refresh, raw, raw-set, add-part, validate, save, batch, dump, import, create, merge, plugins, mcp, skills, install, help. Use --json flag for AI-friendly JSON output. Quote paths containing brackets: officecli get doc.docx \"/body/p[1]\". Before using this tool, load the relevant skill (e.g. b-officecli-pptx, b-officecli-docx, b-officecli-xlsx) via load_skill for detailed guidance.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "command": {
+                            "type": "string",
+                            "description": "完整的 officecli 子命令字符串（不含 officecli 前缀），例如：'create report.pptx --type pptx'、'set /slide[1] --prop transition=morph'、'help pptx slide'、'get deck.pptx /slide[1] --json'"
+                        }
+                    },
+                    "required": ["command"]
+                }
+            }
+        }),
     ];
     // 追加用户工具定义
     for ut in user_tools.iter().filter(|t| t.enabled) {
@@ -220,14 +238,19 @@ pub fn execute_tool(
         "search_semantic" => execute_search_semantic(args, store),
         "link_memos" => execute_link_memos(args, store),
         "create_review_cards" => execute_create_review_cards(args, store),
-        "load_skill" => execute_load_skill(args, store, builtin),
+        "load_skill" => {
+            let config_store = state.config_store();
+            execute_load_skill(args, store, &config_store, builtin)
+        }
+        "officecli" => execute_officecli(args, state),
         other => {
             // 内置工具名已知但没匹配上（不应该发生）
             if memos_core::tool::BUILTIN_TOOL_NAMES.contains(&other) {
                 return Err(memos_core::CoreError::Other(format!("内置工具未实现: {other}")));
             }
-            // 查用户工具
-            let user_tool = memos_core::tool::get_by_name(store, other)?
+            // 查用户工具（tool 表在 ConfigStore / app_config.db）
+            let config_store = state.config_store();
+            let user_tool = memos_core::tool::get_by_name(&config_store, other)?
                 .ok_or_else(|| memos_core::CoreError::Other(format!("未知工具: {name}")))?;
             if !user_tool.enabled {
                 return Ok(json!({"error": format!("工具 {} 已禁用", name)}));
@@ -607,6 +630,7 @@ const MAX_SKILL_BODY_BYTES: usize = 50 * 1024;
 fn execute_load_skill(
     args: &Value,
     store: &Store,
+    config_store: &ConfigStore,
     builtin: &[Skill],
 ) -> memos_core::CoreResult<Value> {
     let skill_id = args
@@ -616,7 +640,7 @@ fn execute_load_skill(
             memos_core::CoreError::Other("load_skill 缺少 skill_id 参数".into())
         })?;
 
-    match memos_core::skill::get(builtin, store, skill_id)? {
+    match memos_core::skill::get(builtin, store, config_store, skill_id)? {
         Some(s) if s.enabled => {
             let body = if s.body.len() > MAX_SKILL_BODY_BYTES {
                 // Find a safe UTF-8 boundary at or before MAX_SKILL_BODY_BYTES
@@ -640,6 +664,165 @@ fn execute_load_skill(
             "error": "skill not found or disabled"
         })),
     }
+}
+
+/// officecli 工具输出最大字节数（超出则头尾截断）
+const MAX_OFFICECLI_OUTPUT_BYTES: usize = 20 * 1024;
+
+/// officecli 工具默认超时（120 秒，文档操作可能耗时较长）
+const OFFICECLI_TIMEOUT_MS: u64 = 120_000;
+
+/// 解析 officecli 二进制路径
+/// 优先使用 Tauri resource_dir（生产环境打包），回退到编译期 src-tauri/skills 路径（开发环境）
+fn resolve_officecli_binary(app_handle: &tauri::AppHandle) -> std::path::PathBuf {
+    #[cfg(windows)]
+    const BIN_NAME: &str = "officecli.exe";
+    #[cfg(not(windows))]
+    const BIN_NAME: &str = "officecli";
+
+    // 1. 生产环境：从 Tauri 资源目录读取
+    if let Ok(resource_dir) = app_handle.path().resource_dir() {
+        let path = resource_dir.join("skills/office-cli").join(BIN_NAME);
+        if path.exists() {
+            return path;
+        }
+    }
+
+    // 2. 开发环境回退：编译期 CARGO_MANIFEST_DIR（src-tauri/）下的相对路径
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("skills/office-cli")
+        .join(BIN_NAME)
+}
+
+/// 简单的 shell 参数切分：按空白拆分，双引号内的内容视为单个参数。
+/// 转义支持：`\"` 转义双引号，`\\` 转义反斜杠（仅在引号内生效）。
+fn split_shell_args(s: &str) -> Vec<String> {
+    let mut args = Vec::new();
+    let mut current = String::new();
+    let mut in_quotes = false;
+    let mut chars = s.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        match c {
+            '"' if !in_quotes => {
+                in_quotes = true;
+            }
+            '"' if in_quotes => {
+                in_quotes = false;
+            }
+            '\\' if in_quotes => {
+                if let Some(&next) = chars.peek() {
+                    if next == '"' || next == '\\' {
+                        current.push(chars.next().unwrap());
+                        continue;
+                    }
+                }
+                current.push(c);
+            }
+            c if c.is_whitespace() && !in_quotes => {
+                if !current.is_empty() {
+                    args.push(std::mem::take(&mut current));
+                }
+            }
+            _ => {
+                current.push(c);
+            }
+        }
+    }
+    if !current.is_empty() {
+        args.push(current);
+    }
+    args
+}
+
+/// 执行内置 officecli 工具
+/// agent_loop 在同步上下文中调用，内部用 async_runtime::block_on 桥接
+fn execute_officecli(args: &Value, state: &AppState) -> memos_core::CoreResult<Value> {
+    let command = args
+        .get("command")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| memos_core::CoreError::Other("缺少 command 参数".to_string()))?;
+
+    let binary_path = resolve_officecli_binary(state.app_handle());
+    if !binary_path.exists() {
+        return Ok(json!({
+            "error": format!("officecli binary not found at: {}", binary_path.display()),
+            "tool_name": "officecli",
+        }));
+    }
+
+    let cli_args = split_shell_args(command);
+    let cwd = state
+        .attachments_dir
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."))
+        .to_path_buf();
+    let binary_path_owned = binary_path.clone();
+
+    async_runtime::block_on(async move {
+        let mut cmd = tokio::process::Command::new(&binary_path_owned);
+        for arg in &cli_args {
+            cmd.arg(arg);
+        }
+        cmd.current_dir(&cwd)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true);
+
+        // Windows 下隐藏控制台窗口弹出（tokio::process::Command 原生支持 creation_flags）
+        #[cfg(windows)]
+        {
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+            cmd.creation_flags(CREATE_NO_WINDOW);
+        }
+
+        let child = match cmd.spawn() {
+            Ok(c) => c,
+            Err(e) => {
+                return Ok(json!({
+                    "error": format!("spawn failed: {e}"),
+                    "tool_name": "officecli",
+                    "binary": binary_path_owned.to_string_lossy(),
+                }));
+            }
+        };
+
+        let timeout_dur = Duration::from_millis(OFFICECLI_TIMEOUT_MS);
+        let output = match tokio::time::timeout(timeout_dur, child.wait_with_output()).await {
+            Ok(Ok(out)) => out,
+            Ok(Err(e)) => {
+                return Ok(json!({
+                    "error": format!("wait failed: {e}"),
+                    "tool_name": "officecli",
+                }));
+            }
+            Err(_) => {
+                return Ok(json!({
+                    "error": format!("timeout after {OFFICECLI_TIMEOUT_MS}ms"),
+                    "tool_name": "officecli",
+                }));
+            }
+        };
+
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let stderr: String = String::from_utf8_lossy(&output.stderr)
+            .lines()
+            .map(|l| format!("[stderr] {l}\n"))
+            .collect();
+        let mut combined = format!("{stdout}{stderr}");
+
+        if combined.len() > MAX_OFFICECLI_OUTPUT_BYTES {
+            combined = truncate_at_char_boundary(&combined, MAX_OFFICECLI_OUTPUT_BYTES);
+        }
+
+        Ok(json!({
+            "output": combined,
+            "exit_code": output.status.code().unwrap_or(-1),
+            "tool_name": "officecli",
+            "binary": binary_path_owned.to_string_lossy(),
+        }))
+    })
 }
 
 /// 生成 16 字符 hex ID
@@ -835,7 +1018,7 @@ mod tests {
     #[test]
     fn test_tool_definitions_count() {
         let defs = tool_definitions(&[]);
-        assert_eq!(defs.len(), 10);
+        assert_eq!(defs.len(), 11);
         let names: Vec<&str> = defs
             .iter()
             .map(|d| d["function"]["name"].as_str().unwrap())
@@ -850,6 +1033,7 @@ mod tests {
         assert!(names.contains(&"link_memos"));
         assert!(names.contains(&"create_review_cards"));
         assert!(names.contains(&"load_skill"));
+        assert!(names.contains(&"officecli"));
     }
 
     #[test]
@@ -873,13 +1057,43 @@ mod tests {
             ..enabled.clone()
         };
         let defs = tool_definitions(&[enabled, disabled]);
-        assert_eq!(defs.len(), 11); // 10 + 1 enabled
+        assert_eq!(defs.len(), 12); // 11 built-in + 1 enabled user tool
         let names: Vec<&str> = defs
             .iter()
             .map(|d| d["function"]["name"].as_str().unwrap())
             .collect();
         assert!(names.contains(&"my_tool"));
         assert!(!names.contains(&"disabled_tool"));
+    }
+
+    #[test]
+    fn test_split_shell_args_simple() {
+        let args = split_shell_args("create report.pptx --type pptx");
+        assert_eq!(args, vec!["create", "report.pptx", "--type", "pptx"]);
+    }
+
+    #[test]
+    fn test_split_shell_args_quoted() {
+        let args = split_shell_args("get doc.docx \"/body/p[1]\"");
+        assert_eq!(args, vec!["get", "doc.docx", "/body/p[1]"]);
+    }
+
+    #[test]
+    fn test_split_shell_args_escaped_quote() {
+        let args = split_shell_args("set /slide[1] --prop \"text=\\\"hi\\\"\"");
+        assert_eq!(args, vec!["set", "/slide[1]", "--prop", "text=\"hi\""]);
+    }
+
+    #[test]
+    fn test_split_shell_args_empty() {
+        let args = split_shell_args("");
+        assert!(args.is_empty());
+    }
+
+    #[test]
+    fn test_split_shell_args_extra_whitespace() {
+        let args = split_shell_args("  create   report.pptx  ");
+        assert_eq!(args, vec!["create", "report.pptx"]);
     }
 
     #[test]
@@ -944,12 +1158,12 @@ mod tests {
 
     #[test]
     fn test_execute_tool_unknown() {
-        let store = Store::open(":memory:").unwrap();
+        let config_store = memos_core::ConfigStore::open_in_memory().unwrap();
         // execute_tool 的 other=> 分支：unknown_tool 既非内置工具，也不在用户工具表中。
         // 由于 AppState 需要 AppHandle（无法在单元测试线程中构造 Wry 事件循环），
         // 这里直接验证 dispatch 逻辑：get_by_name 返回 None → ok_or_else 返回 Err。
         // 该路径与 execute_tool 内部对未知工具的处理完全一致。
-        let result = memos_core::tool::get_by_name(&store, "unknown_tool")
+        let result = memos_core::tool::get_by_name(&config_store, "unknown_tool")
             .and_then(|opt| {
                 opt.ok_or_else(|| {
                     memos_core::CoreError::Other(format!("未知工具: unknown_tool"))

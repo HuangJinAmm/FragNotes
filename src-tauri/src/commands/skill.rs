@@ -40,8 +40,9 @@ impl From<Skill> for SkillDto {
 #[tauri::command]
 pub fn skill_list(state: State<'_, AppState>) -> IpcResult<Vec<SkillDto>> {
     let store = state.store();
+    let config_store = state.config_store();
     let builtin = state.builtin_skills.clone();
-    let skills = memos_core::skill::list(&builtin, &store)?;
+    let skills = memos_core::skill::list(&builtin, &store, &config_store)?;
     Ok(skills.into_iter().map(SkillDto::from).collect())
 }
 
@@ -69,6 +70,7 @@ pub fn skill_delete(state: State<'_, AppState>, id: String) -> IpcResult<()> {
 #[tauri::command]
 pub fn skill_set_enabled(state: State<'_, AppState>, id: String, enabled: bool) -> IpcResult<()> {
     let store = state.store();
-    memos_core::skill::set_enabled(&store, &id, enabled)?;
+    let config_store = state.config_store();
+    memos_core::skill::set_enabled(&store, &config_store, &id, enabled)?;
     Ok(())
 }

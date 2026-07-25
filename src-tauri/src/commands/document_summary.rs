@@ -132,17 +132,19 @@ pub async fn summarize_document_content(
     match converted {
         Converted::Done(result) => Ok(result),
         Converted::NeedsSummary { filename, truncated } => {
-            let store = state.store();
-            let summary = call_first_provider(
-                &store,
-                SUMMARY_SYSTEM_PROMPT,
-                &format!(
-                    "以下是文档《{}》的前 {} 字符内容，请生成一份简洁的中文摘要，概括其核心主题、关键信息与结构要点。只输出摘要正文，不要额外说明。\n\n---\n{}",
-                    filename,
-                    truncated.chars().count(),
-                    truncated
-                ),
-            )?; // LLM 失败 → 返回 Err，前端 toast
+            let summary = {
+                let config_store = state.config_store();
+                call_first_provider(
+                    &config_store,
+                    SUMMARY_SYSTEM_PROMPT,
+                    &format!(
+                        "以下是文档《{}》的前 {} 字符内容，请生成一份简洁的中文摘要，概括其核心主题、关键信息与结构要点。只输出摘要正文，不要额外说明。\n\n---\n{}",
+                        filename,
+                        truncated.chars().count(),
+                        truncated
+                    ),
+                )?
+            }; // LLM 失败 → 返回 Err，前端 toast
 
             let markdown = format!("## 📄 {} 摘要\n\n{}", filename, summary.trim());
 

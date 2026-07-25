@@ -125,14 +125,14 @@ pub async fn ai_chat(
     ABORTS.lock().unwrap().insert(run_id, abort_flag.clone());
 
     // 提前检查 provider 是否存在，避免 spawn 后才发现错误
-    let store = state.store();
-    let providers = load_providers(&store);
+    let config_store = state.config_store();
+    let providers = load_providers(&config_store);
     let provider = providers
         .iter()
         .find(|p| p.id == provider_id)
         .cloned()
         .ok_or_else(|| IpcError::BadRequest("Provider 不存在".to_string()))?;
-    drop(store);
+    drop(config_store);
 
     let app_handle = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
@@ -158,6 +158,8 @@ fn agent_loop(
     messages: Vec<ChatMessage>,
     abort_flag: Arc<AtomicBool>,
 ) {
+    // 标记本 agent_loop 正在运行，函数退出时（含错误/abort 路径）自动递减计数器
+    let _running_guard = crate::ai::agent_loop::start();
     let state = app.state::<AppState>();
     // abort/shutdown 时唤醒所有 pending 确认（RAII guard，无论 agent_loop 因何原因 return 都会触发）
     struct CancelGuard<'a>(&'a AppState);
@@ -177,11 +179,12 @@ fn agent_loop(
     let builtin = state.builtin_skills.clone();
     let skill_section = {
         let store = state.store();
-        memos_core::skill::list_enabled(&builtin, &store).unwrap_or_default()
+        let config_store = state.config_store();
+        memos_core::skill::list_enabled(&builtin, &store, &config_store).unwrap_or_default()
     };
     let user_tools = {
-        let store = state.store();
-        memos_core::tool::list_enabled(&store).unwrap_or_default()
+        let config_store = state.config_store();
+        memos_core::tool::list_enabled(&config_store).unwrap_or_default()
     };
     let skill_metadata = build_skill_metadata_section(&skill_section);
     let system_content = format!("{}{}", SYSTEM_PROMPT, skill_metadata);
@@ -353,8 +356,8 @@ fn format_http_error(e: ureq::Error) -> String {
 /// 列出所有已配置的 provider
 #[tauri::command]
 pub fn list_providers(state: tauri::State<'_, AppState>) -> IpcResult<Vec<ProviderConfig>> {
-    let store = state.store();
-    Ok(load_providers(&store))
+    let config_store = state.config_store();
+    Ok(load_providers(&config_store))
 }
 
 /// 保存 provider 列表（全量替换）
@@ -363,7 +366,7 @@ pub fn save_providers_cmd(
     state: tauri::State<'_, AppState>,
     providers: Vec<ProviderConfig>,
 ) -> IpcResult<Vec<ProviderConfig>> {
-    let store = state.store();
-    save_providers(&store, &providers)?;
+    let config_store = state.config_store();
+    save_providers(&config_store, &providers)?;
     Ok(providers)
 }

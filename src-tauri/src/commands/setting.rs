@@ -63,9 +63,9 @@ impl Default for StorageConfig {
 const STORAGE_CONFIG_KEY: &str = "storage_config";
 
 /// 从 app_setting 读取存储配置，缺失则返回默认值
-pub fn load_storage_config(store: &memos_core::Store) -> StorageConfig {
-    let json: Option<String> = store
-        .with_conn(|c| store.setting.app.get(c, STORAGE_CONFIG_KEY))
+pub fn load_storage_config(config_store: &memos_core::ConfigStore) -> StorageConfig {
+    let json: Option<String> = config_store
+        .with_conn(|c| config_store.setting.app.get(c, STORAGE_CONFIG_KEY))
         .unwrap_or(None);
     json.as_deref()
         .and_then(|s| serde_json::from_str(s).ok())
@@ -75,8 +75,8 @@ pub fn load_storage_config(store: &memos_core::Store) -> StorageConfig {
 /// 获取存储配置
 #[tauri::command]
 pub fn get_storage_config(state: tauri::State<'_, AppState>) -> IpcResult<StorageConfig> {
-    let store = state.store();
-    Ok(load_storage_config(&store))
+    let config_store = state.config_store();
+    Ok(load_storage_config(&config_store))
 }
 
 /// 更新存储配置
@@ -99,8 +99,8 @@ pub fn update_storage_config(
 
     let json = serde_json::to_string(&req)
         .map_err(|e| IpcError::Internal(format!("序列化存储配置失败: {e}")))?;
-    let store = state.store();
-    store.with_conn(|c| store.setting.app.upsert(c, STORAGE_CONFIG_KEY, &json))?;
+    let config_store = state.config_store();
+    config_store.with_conn(|c| config_store.setting.app.upsert(c, STORAGE_CONFIG_KEY, &json))?;
     Ok(req)
 }
 
@@ -117,8 +117,8 @@ pub fn get_app_setting(
     state: tauri::State<'_, AppState>,
     key: String,
 ) -> IpcResult<Option<String>> {
-    let store = state.store();
-    Ok(store.with_conn(|c| store.setting.app.get(c, &key))?)
+    let config_store = state.config_store();
+    Ok(config_store.with_conn(|c| config_store.setting.app.get(c, &key))?)
 }
 
 #[tauri::command]
@@ -126,15 +126,15 @@ pub fn upsert_app_setting(
     state: tauri::State<'_, AppState>,
     req: UpsertAppSettingRequest,
 ) -> IpcResult<()> {
-    let store = state.store();
-    store.with_conn(|c| store.setting.app.upsert(c, &req.key, &req.value))?;
+    let config_store = state.config_store();
+    config_store.with_conn(|c| config_store.setting.app.upsert(c, &req.key, &req.value))?;
     Ok(())
 }
 
 #[tauri::command]
 pub fn delete_app_setting(state: tauri::State<'_, AppState>, key: String) -> IpcResult<()> {
-    let store = state.store();
-    store.with_conn(|c| store.setting.app.delete(c, &key))?;
+    let config_store = state.config_store();
+    config_store.with_conn(|c| config_store.setting.app.delete(c, &key))?;
     Ok(())
 }
 
@@ -153,8 +153,8 @@ pub fn get_instance_setting(
     state: tauri::State<'_, AppState>,
     name: String,
 ) -> IpcResult<Option<String>> {
-    let store = state.store();
-    Ok(store.with_conn(|c| store.setting.instance.get(c, &name))?)
+    let config_store = state.config_store();
+    Ok(config_store.with_conn(|c| config_store.setting.instance.get(c, &name))?)
 }
 
 #[tauri::command]
@@ -162,9 +162,9 @@ pub fn upsert_instance_setting(
     state: tauri::State<'_, AppState>,
     req: UpsertInstanceSettingRequest,
 ) -> IpcResult<()> {
-    let store = state.store();
-    store.with_conn(|c| {
-        store
+    let config_store = state.config_store();
+    config_store.with_conn(|c| {
+        config_store
             .setting
             .instance
             .upsert(c, &req.name, &req.value, &req.description)
@@ -174,8 +174,8 @@ pub fn upsert_instance_setting(
 
 #[tauri::command]
 pub fn delete_instance_setting(state: tauri::State<'_, AppState>, name: String) -> IpcResult<()> {
-    let store = state.store();
-    store.with_conn(|c| store.setting.instance.delete(c, &name))?;
+    let config_store = state.config_store();
+    config_store.with_conn(|c| config_store.setting.instance.delete(c, &name))?;
     Ok(())
 }
 

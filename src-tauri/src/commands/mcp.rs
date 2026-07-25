@@ -14,8 +14,8 @@ use tauri::{AppHandle, Emitter, Manager};
 /// 读取 MCP 服务器配置
 #[tauri::command]
 pub fn mcp_get_config(state: tauri::State<'_, AppState>) -> IpcResult<McpConfig> {
-    let store = state.store();
-    Ok(load_config(&store))
+    let config_store = state.config_store();
+    Ok(load_config(&config_store))
 }
 
 /// 保存 MCP 服务器配置
@@ -36,8 +36,8 @@ pub fn mcp_update_config(
     req.host = req.host.trim().to_string();
     req.auth_token = req.auth_token.trim().to_string();
 
-    let store = state.store();
-    save_config(&store, &req)?;
+    let config_store = state.config_store();
+    save_config(&config_store, &req)?;
 
     // 同步更新运行时配置（运行中不强制重启）
     if let Some(runner) = state.mcp.read().expect("MCP RwLock poisoned").as_ref() {
@@ -63,8 +63,8 @@ pub async fn mcp_stop(app_handle: AppHandle) -> IpcResult<McpStatus> {
     // 返回最新状态
     let cfg = {
         let state = app_handle.state::<AppState>();
-        let store = state.store();
-        load_config(&store)
+        let config_store = state.config_store();
+        load_config(&config_store)
     };
     Ok(stopped_status(cfg))
 }
@@ -78,8 +78,8 @@ pub fn mcp_get_status(state: tauri::State<'_, AppState>) -> IpcResult<McpStatus>
         .expect("MCP RwLock poisoned")
         .clone();
     let Some(runner) = runner else {
-        let store = state.store();
-        let cfg = load_config(&store);
+        let config_store = state.config_store();
+        let cfg = load_config(&config_store);
         return Ok(stopped_status(cfg));
     };
     Ok(runner.status())
@@ -91,8 +91,8 @@ pub async fn mcp_test_connection(
     state: tauri::State<'_, AppState>,
 ) -> IpcResult<McpTestResult> {
     let cfg = {
-        let store = state.store();
-        load_config(&store)
+        let config_store = state.config_store();
+        load_config(&config_store)
     };
 
     let url = format!("{}/mcp", cfg.endpoint_url().trim_end_matches("/mcp"));

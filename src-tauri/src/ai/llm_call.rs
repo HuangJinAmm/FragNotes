@@ -2,7 +2,7 @@
 
 use crate::ai::provider::{load_providers, ProviderConfig};
 use crate::error::{IpcError, IpcResult};
-use memos_core::Store;
+use memos_core::ConfigStore;
 use serde_json::{json, Value};
 
 /// 选取用于非流式调用的 provider。
@@ -34,22 +34,22 @@ fn pick_provider<'a>(
 ///
 /// 保留以兼容旧调用方；新调用应使用 `call_provider`。
 pub fn call_first_provider(
-    store: &Store,
+    config_store: &ConfigStore,
     system_prompt: &str,
     user_message: &str,
 ) -> IpcResult<String> {
-    call_provider(store, None, system_prompt, user_message)
+    call_provider(config_store, None, system_prompt, user_message)
 }
 
 /// 与 `call_first_provider` 相同，但可指定优先使用的 provider ID。
 /// `preferred_id` 为 None 或匹配不到时回退到首个 provider。
 pub fn call_provider(
-    store: &Store,
+    config_store: &ConfigStore,
     preferred_id: Option<&str>,
     system_prompt: &str,
     user_message: &str,
 ) -> IpcResult<String> {
-    let providers = load_providers(store);
+    let providers = load_providers(config_store);
     let provider = pick_provider(&providers, preferred_id)?.clone();
 
     let body = json!({

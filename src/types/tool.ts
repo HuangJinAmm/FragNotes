@@ -12,7 +12,7 @@ export interface ToolDto {
   updated_ts: number;
 }
 
-/** 内置 10 个工具名（黑名单，校验用户输入用） */
+/** 内置 11 个工具名（黑名单，校验用户输入用） */
 export const BUILTIN_TOOL_NAMES = [
   "list_memos",
   "get_memo",
@@ -24,6 +24,7 @@ export const BUILTIN_TOOL_NAMES = [
   "link_memos",
   "create_review_cards",
   "load_skill",
+  "officecli",
 ] as const;
 
 export const PERMISSION_LABELS: Record<ToolPermission, string> = {

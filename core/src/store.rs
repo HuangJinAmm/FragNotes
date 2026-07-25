@@ -1,9 +1,7 @@
 //! Store facade：统一管理 SQLite 连接与缓存
 
-use crate::cache::{new_string_cache, CacheConfig};
 use crate::error::CoreResult;
 use crate::migration;
-use crate::setting::SettingStore;
 use rusqlite::Connection;
 use std::path::Path;
 use std::sync::{Mutex, Once};
@@ -27,7 +25,6 @@ fn ensure_vec_extension_loaded() {
 /// Store 是应用的数据层入口
 pub struct Store {
     conn: Mutex<Connection>,
-    pub setting: SettingStore,
 }
 
 impl Store {
@@ -42,14 +39,8 @@ impl Store {
         migration::run(&mut conn_mut)?;
         let conn = conn_mut;
 
-        let cfg = CacheConfig::default();
-        let app_cache = new_string_cache(&cfg);
-        let instance_cache = new_string_cache(&cfg);
-        let setting = SettingStore::new(app_cache, instance_cache);
-
         Ok(Self {
             conn: Mutex::new(conn),
-            setting,
         })
     }
 
@@ -61,14 +52,8 @@ impl Store {
         migration::run(&mut conn_mut)?;
         let conn = conn_mut;
 
-        let cfg = CacheConfig::default();
-        let app_cache = new_string_cache(&cfg);
-        let instance_cache = new_string_cache(&cfg);
-        let setting = SettingStore::new(app_cache, instance_cache);
-
         Ok(Self {
             conn: Mutex::new(conn),
-            setting,
         })
     }
 

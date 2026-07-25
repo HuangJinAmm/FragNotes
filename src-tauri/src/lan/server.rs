@@ -139,7 +139,10 @@ async fn handle_get_profile(
 ) -> HandlerResult {
     let app_state = app.state::<AppState>();
     let store = app_state.store();
-    let display_name = load_display_name(&store);
+    let display_name = {
+        let config_store = app_state.config_store();
+        load_display_name(&config_store)
+    };
 
     // 统计 PUBLIC 且 NORMAL 的 memo 数量
     let public_count: i32 = store
@@ -200,8 +203,11 @@ async fn handle_list_memos(
     let app_state = app.state::<AppState>();
     let store = app_state.store();
 
-    // 读取 ACL 规则
-    let acl_json = load_acl_rules_json(&store);
+    // 读取 ACL 规则（持久化在 app_config.db / ConfigStore）
+    let acl_json = {
+        let config_store = app_state.config_store();
+        load_acl_rules_json(&config_store)
+    };
     let rules = load_rules(&acl_json);
 
     // 查询所有 PUBLIC memo（带 tag_filter），先取较大集合再做 ACL 过滤与手动分页
@@ -300,7 +306,10 @@ async fn handle_get_memo(
     }
 
     // ACL 检查
-    let acl_json = load_acl_rules_json(&store);
+    let acl_json = {
+        let config_store = app_state.config_store();
+        load_acl_rules_json(&config_store)
+    };
     let rules = load_rules(&acl_json);
     if !is_memo_visible(&memo, peer_id, &rules) {
         return Err((403, "memo not visible to peer".into()));
@@ -385,7 +394,10 @@ async fn handle_get_attachment(
                     if m.visibility != Visibility::Public {
                         return Err((403, "associated memo not public".into()));
                     }
-                    let acl_json = load_acl_rules_json(&store);
+                    let acl_json = {
+                        let config_store = app_state.config_store();
+                        load_acl_rules_json(&config_store)
+                    };
                     let rules = load_rules(&acl_json);
                     if !is_memo_visible(&m, peer_id, &rules) {
                         return Err((403, "associated memo not visible to peer".into()));

@@ -168,11 +168,14 @@ pub fn review_score_card(
 ) -> IpcResult<ScoreResult> {
     let store = state.store();
 
-    // 读取 FSRS 参数（空=默认）
-    let fsrs_params: Vec<f32> = store
-        .with_conn(|c| store.setting.app.get(c, "fsrs_params"))?
-        .and_then(|json| serde_json::from_str::<Vec<f32>>(&json).ok())
-        .unwrap_or_default();
+    // 读取 FSRS 参数（空=默认）从 ConfigStore (app_config.db)
+    let fsrs_params: Vec<f32> = {
+        let config_store = state.config_store();
+        config_store
+            .with_conn(|c| config_store.setting.app.get(c, "fsrs_params"))?
+            .and_then(|json| serde_json::from_str::<Vec<f32>>(&json).ok())
+            .unwrap_or_default()
+    };
 
     // 评分并更新卡片
     let (updated_card, _record) =
@@ -327,10 +330,10 @@ pub async fn review_generate_cards(
 
     // 读取 AI provider
     let provider = {
-        let store = state.store();
-        let providers = load_providers(&store);
-        let config_json = store
-            .with_conn(|c| store.setting.app.get(c, "review_config"))?
+        let config_store = state.config_store();
+        let providers = load_providers(&config_store);
+        let config_json = config_store
+            .with_conn(|c| config_store.setting.app.get(c, "review_config"))?
             .unwrap_or_default();
         let provider_id: String = serde_json::from_str::<Value>(&config_json)
             .ok()
@@ -393,8 +396,8 @@ pub async fn review_regenerate_card(
 
     // 读取 provider
     let provider = {
-        let store = state.store();
-        let providers = load_providers(&store);
+        let config_store = state.config_store();
+        let providers = load_providers(&config_store);
         providers
             .first()
             .cloned()

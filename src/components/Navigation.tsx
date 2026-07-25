@@ -9,6 +9,7 @@ import { useTranslate } from "@/utils/i18n";
 import { useTotalDueCount } from "@/components/Review/hooks";
 import MemosLogo from "./MemosLogo";
 import UserMenu from "./UserMenu";
+import WorkspaceSwitcher from "./WorkspaceSwitcher";
 
 interface NavLinkItem {
   id: string;
@@ -85,6 +86,7 @@ const Navigation = (props: Props) => {
         <NavLink className="mb-3 cursor-default" to={Routes.HOME}>
           <MemosLogo collapsed={collapsed} />
         </NavLink>
+        <WorkspaceSwitcher collapsed={collapsed} />
         <TooltipProvider>
           {primaryNavLinks.map((navLink) => (
             <NavLink

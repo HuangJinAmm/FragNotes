@@ -4,8 +4,10 @@ use crate::ai::pending_confirmations::PendingConfirmations;
 use crate::lan::LanState;
 use crate::llm_runner::LlmRunnerState;
 use crate::mcp::McpState;
+use crate::workspace::WorkspaceRegistry;
 use memos_core::skill::Skill;
-use memos_core::Store;
+use memos_core::{ConfigStore, Store};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 
@@ -29,6 +31,12 @@ pub struct AppState {
     pub pending_confirmations: PendingConfirmations,
     /// AppHandle 副本，用于 emit 事件（agent_loop 等同步上下文需要）
     pub app_handle: tauri::AppHandle,
+    /// 共享配置 Store（app_config.db），跨工作空间共享
+    pub config_store: Mutex<ConfigStore>,
+    /// 工作空间注册表（workspaces.json）
+    pub workspace_registry: Mutex<WorkspaceRegistry>,
+    /// 引导目录（Tauri app_config_dir），存放 app_config.db 和 workspaces.json
+    pub config_dir: PathBuf,
 }
 
 impl AppState {
@@ -65,5 +73,19 @@ impl AppState {
     /// 获取 app_handle 引用
     pub fn app_handle(&self) -> &tauri::AppHandle {
         &self.app_handle
+    }
+
+    /// 获取 ConfigStore 的 MutexGuard
+    pub fn config_store(&self) -> std::sync::MutexGuard<'_, ConfigStore> {
+        self.config_store.lock().expect("ConfigStore Mutex poisoned")
+    }
+
+    /// 获取当前 active workspace 的路径，无则返回 None
+    pub fn active_workspace_path(&self) -> Option<PathBuf> {
+        let reg = self
+            .workspace_registry
+            .lock()
+            .expect("WorkspaceRegistry Mutex poisoned");
+        reg.get_active().map(|ws| ws.path.clone())
     }
 }

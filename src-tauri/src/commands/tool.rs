@@ -39,39 +39,39 @@ pub fn tool_list(
     enabled: Option<bool>,
     state: State<'_, AppState>,
 ) -> IpcResult<Vec<ToolDto>> {
-    let store = state.store();
+    let config_store = state.config_store();
     let tools = match enabled {
-        Some(true) => memos_core::tool::list_enabled(&store)?,
-        Some(false) | None => memos_core::tool::list(&store)?,
+        Some(true) => memos_core::tool::list_enabled(&config_store)?,
+        Some(false) | None => memos_core::tool::list(&config_store)?,
     };
     Ok(tools.into_iter().map(ToolDto::from).collect())
 }
 
 #[tauri::command]
 pub fn tool_create(tool: Tool, state: State<'_, AppState>) -> IpcResult<ToolDto> {
-    let store = state.store();
-    let created = memos_core::tool::create(&store, tool)?;
+    let config_store = state.config_store();
+    let created = memos_core::tool::create(&config_store, tool)?;
     Ok(ToolDto::from(created))
 }
 
 #[tauri::command]
 pub fn tool_update(tool: Tool, state: State<'_, AppState>) -> IpcResult<ToolDto> {
-    let store = state.store();
-    let updated = memos_core::tool::update(&store, tool)?;
+    let config_store = state.config_store();
+    let updated = memos_core::tool::update(&config_store, tool)?;
     Ok(ToolDto::from(updated))
 }
 
 #[tauri::command]
 pub fn tool_delete(id: String, state: State<'_, AppState>) -> IpcResult<()> {
-    let store = state.store();
-    memos_core::tool::delete(&store, &id)?;
+    let config_store = state.config_store();
+    memos_core::tool::delete(&config_store, &id)?;
     Ok(())
 }
 
 #[tauri::command]
 pub fn tool_set_enabled(id: String, enabled: bool, state: State<'_, AppState>) -> IpcResult<()> {
-    let store = state.store();
-    memos_core::tool::set_enabled(&store, &id, enabled)?;
+    let config_store = state.config_store();
+    memos_core::tool::set_enabled(&config_store, &id, enabled)?;
     Ok(())
 }
 

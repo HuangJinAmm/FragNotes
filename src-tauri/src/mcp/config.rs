@@ -1,6 +1,6 @@
 //! MCP 服务器配置：持久化在 app_setting 表的 `mcp_config` key（JSON 字符串）
 
-use memos_core::Store;
+use memos_core::ConfigStore;
 use serde::{Deserialize, Serialize};
 
 /// app_setting 中的 key
@@ -66,9 +66,9 @@ impl McpConfig {
 }
 
 /// 从 app_setting 读取配置，缺失则返回默认值
-pub fn load_config(store: &Store) -> McpConfig {
-    let json: Option<String> = store
-        .with_conn(|c| store.setting.app.get(c, CONFIG_KEY))
+pub fn load_config(config_store: &ConfigStore) -> McpConfig {
+    let json: Option<String> = config_store
+        .with_conn(|c| config_store.setting.app.get(c, CONFIG_KEY))
         .unwrap_or(None);
     json.as_deref()
         .and_then(|s| serde_json::from_str(s).ok())
@@ -76,11 +76,11 @@ pub fn load_config(store: &Store) -> McpConfig {
 }
 
 /// 保存配置到 app_setting
-pub fn save_config(store: &Store, config: &McpConfig) -> memos_core::CoreResult<()> {
+pub fn save_config(config_store: &ConfigStore, config: &McpConfig) -> memos_core::CoreResult<()> {
     let json = serde_json::to_string(config).map_err(|e| {
         memos_core::CoreError::Other(format!("序列化 MCP 配置失败: {e}"))
     })?;
-    store.with_conn(|c| store.setting.app.upsert(c, CONFIG_KEY, &json))?;
+    config_store.with_conn(|c| config_store.setting.app.upsert(c, CONFIG_KEY, &json))?;
     Ok(())
 }
 
@@ -147,22 +147,22 @@ mod tests {
 
     #[test]
     fn test_load_config_default_when_absent() {
-        let store = Store::open(":memory:").unwrap();
-        let c = load_config(&store);
+        let config_store = ConfigStore::open_in_memory().unwrap();
+        let c = load_config(&config_store);
         assert_eq!(c.port, 27100);
         assert!(!c.enabled);
     }
 
     #[test]
     fn test_save_and_load_config() {
-        let store = Store::open(":memory:").unwrap();
+        let config_store = ConfigStore::open_in_memory().unwrap();
         let mut c = McpConfig::default();
         c.port = 9999;
         c.enabled = true;
         c.auth_token = "tok".to_string();
         c.auto_start = true;
-        save_config(&store, &c).unwrap();
-        let loaded = load_config(&store);
+        save_config(&config_store, &c).unwrap();
+        let loaded = load_config(&config_store);
         assert_eq!(loaded.port, 9999);
         assert!(loaded.enabled);
         assert_eq!(loaded.auth_token, "tok");

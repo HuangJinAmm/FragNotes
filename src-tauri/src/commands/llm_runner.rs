@@ -16,8 +16,8 @@ use tauri::{AppHandle, Emitter, Manager};
 /// 读取本地 LLM 启动器配置
 #[tauri::command]
 pub fn llm_get_config(state: tauri::State<'_, AppState>) -> IpcResult<LlmRunnerConfig> {
-    let store = state.store();
-    Ok(load_config(&store))
+    let config_store = state.config_store();
+    Ok(load_config(&config_store))
 }
 
 /// 保存本地 LLM 启动器配置
@@ -47,8 +47,8 @@ pub fn llm_update_config(
         ));
     }
 
-    let store = state.store();
-    save_config(&store, &req)?;
+    let config_store = state.config_store();
+    save_config(&config_store, &req)?;
 
     // 若启动器已初始化，同步更新运行时配置（运行中不强制重启）
     if let Some(runner) = state.llm.read().expect("LLM RwLock poisoned").as_ref() {
@@ -91,8 +91,8 @@ pub async fn llm_stop(app_handle: AppHandle) -> IpcResult<LlmRunnerStatus> {
         // 没有运行时状态，返回一个 stopped 快照
         let cfg = {
             let state = app_handle.state::<AppState>();
-            let store = state.store();
-            load_config(&store)
+            let config_store = state.config_store();
+            load_config(&config_store)
         };
         return Ok(stopped_status(cfg));
     };
@@ -117,8 +117,8 @@ pub fn llm_get_status(
         .expect("LLM RwLock poisoned")
         .clone();
     let Some(runner) = runner else {
-        let store = state.store();
-        let cfg = load_config(&store);
+        let config_store = state.config_store();
+        let cfg = load_config(&config_store);
         return Ok(stopped_status(cfg));
     };
     Ok(runner.status())
@@ -137,8 +137,8 @@ pub async fn llm_test_connection(
     let base_url = match runner {
         Some(r) => r.base_url(),
         None => {
-            let store = state.store();
-            let cfg = load_config(&store);
+            let config_store = state.config_store();
+            let cfg = load_config(&config_store);
             effective_base_url(&cfg)
         }
     };
@@ -224,8 +224,8 @@ fn ensure_runner_state(app_handle: &AppHandle) -> IpcResult<Arc<LlmRunnerState>>
         return Ok(Arc::clone(existing));
     }
     let cfg = {
-        let store = state.store();
-        load_config(&store)
+        let config_store = state.config_store();
+        load_config(&config_store)
     };
     let runner = Arc::new(LlmRunnerState::new(cfg));
     *guard = Some(Arc::clone(&runner));

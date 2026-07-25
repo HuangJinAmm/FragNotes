@@ -5,7 +5,7 @@
 //! - Tool 是可执行的工具，LLM 调用时传完整 command 字符串，后端在固定工作目录执行
 
 use crate::error::{CoreError, CoreResult};
-use crate::Store;
+use crate::ConfigStore;
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 
@@ -71,6 +71,7 @@ pub const BUILTIN_TOOL_NAMES: &[&str] = &[
     "link_memos",
     "create_review_cards",
     "load_skill",
+    "officecli",
 ];
 
 fn validate_name(name: &str) -> CoreResult<()> {
@@ -131,7 +132,7 @@ fn row_to_tool(row: &rusqlite::Row) -> rusqlite::Result<Tool> {
 }
 
 /// 列出所有用户工具，按 name 排序
-pub fn list(store: &Store) -> CoreResult<Vec<Tool>> {
+pub fn list(store: &ConfigStore) -> CoreResult<Vec<Tool>> {
     store.with_conn(|conn| {
         let mut stmt = conn.prepare(
             "SELECT id, name, command, permission, description, timeout_ms, enabled, created_ts, updated_ts
@@ -147,12 +148,12 @@ pub fn list(store: &Store) -> CoreResult<Vec<Tool>> {
 }
 
 /// 仅返回 enabled 的工具
-pub fn list_enabled(store: &Store) -> CoreResult<Vec<Tool>> {
+pub fn list_enabled(store: &ConfigStore) -> CoreResult<Vec<Tool>> {
     Ok(list(store)?.into_iter().filter(|t| t.enabled).collect())
 }
 
 /// 按 id 查找
-pub fn get(store: &Store, id: &str) -> CoreResult<Option<Tool>> {
+pub fn get(store: &ConfigStore, id: &str) -> CoreResult<Option<Tool>> {
     store.with_conn(|conn| {
         let row_opt = conn
             .query_row(
@@ -167,7 +168,7 @@ pub fn get(store: &Store, id: &str) -> CoreResult<Option<Tool>> {
 }
 
 /// 按 name 查找
-pub fn get_by_name(store: &Store, name: &str) -> CoreResult<Option<Tool>> {
+pub fn get_by_name(store: &ConfigStore, name: &str) -> CoreResult<Option<Tool>> {
     store.with_conn(|conn| {
         let row_opt = conn
             .query_row(
@@ -182,7 +183,7 @@ pub fn get_by_name(store: &Store, name: &str) -> CoreResult<Option<Tool>> {
 }
 
 /// 创建用户工具。id 必须以 "u-" 开头。
-pub fn create(store: &Store, mut tool: Tool) -> CoreResult<Tool> {
+pub fn create(store: &ConfigStore, mut tool: Tool) -> CoreResult<Tool> {
     if !tool.id.starts_with("u-") {
         return Err(CoreError::Other("用户工具 id 必须以 u- 开头".into()));
     }
@@ -216,7 +217,7 @@ pub fn create(store: &Store, mut tool: Tool) -> CoreResult<Tool> {
 }
 
 /// 更新用户工具（id 不可改）
-pub fn update(store: &Store, mut tool: Tool) -> CoreResult<Tool> {
+pub fn update(store: &ConfigStore, mut tool: Tool) -> CoreResult<Tool> {
     validate_name(&tool.name)?;
     validate_command(&tool.command)?;
     validate_description(&tool.description)?;
@@ -248,7 +249,7 @@ pub fn update(store: &Store, mut tool: Tool) -> CoreResult<Tool> {
 }
 
 /// 删除用户工具
-pub fn delete(store: &Store, id: &str) -> CoreResult<()> {
+pub fn delete(store: &ConfigStore, id: &str) -> CoreResult<()> {
     store.with_conn(|conn| {
         conn.execute("DELETE FROM tool WHERE id=?1", params![id])?;
         Ok(())
@@ -256,7 +257,7 @@ pub fn delete(store: &Store, id: &str) -> CoreResult<()> {
 }
 
 /// 设置启用状态
-pub fn set_enabled(store: &Store, id: &str, enabled: bool) -> CoreResult<()> {
+pub fn set_enabled(store: &ConfigStore, id: &str, enabled: bool) -> CoreResult<()> {
     let now = chrono::Utc::now().timestamp();
     store.with_conn(|conn| {
         conn.execute(
@@ -287,7 +288,7 @@ mod tests {
 
     #[test]
     fn test_create_and_get() {
-        let store = Store::open(":memory:").unwrap();
+        let store = ConfigStore::open_in_memory().unwrap();
         let t = create(&store, sample_tool("u-my", "my_tool")).unwrap();
         assert_eq!(t.id, "u-my");
         assert!(t.created_ts > 0);
@@ -299,14 +300,14 @@ mod tests {
 
     #[test]
     fn test_create_rejects_non_u_prefix() {
-        let store = Store::open(":memory:").unwrap();
+        let store = ConfigStore::open_in_memory().unwrap();
         let result = create(&store, sample_tool("bad", "my_tool"));
         assert!(result.is_err());
     }
 
     #[test]
     fn test_create_rejects_builtin_name() {
-        let store = Store::open(":memory:").unwrap();
+        let store = ConfigStore::open_in_memory().unwrap();
         let mut t = sample_tool("u-x", "list_memos");
         let result = create(&store, t.clone());
         assert!(result.is_err());
@@ -316,7 +317,7 @@ mod tests {
 
     #[test]
     fn test_create_rejects_invalid_name() {
-        let store = Store::open(":memory:").unwrap();
+        let store = ConfigStore::open_in_memory().unwrap();
         // 大写字母不允许
         let mut t = sample_tool("u-x", "MyTool");
         assert!(create(&store, t.clone()).is_err());
@@ -327,7 +328,7 @@ mod tests {
 
     #[test]
     fn test_get_by_name() {
-        let store = Store::open(":memory:").unwrap();
+        let store = ConfigStore::open_in_memory().unwrap();
         create(&store, sample_tool("u-a", "tool_a")).unwrap();
         let got = get_by_name(&store, "tool_a").unwrap().unwrap();
         assert_eq!(got.id, "u-a");
@@ -336,7 +337,7 @@ mod tests {
 
     #[test]
     fn test_name_unique_constraint() {
-        let store = Store::open(":memory:").unwrap();
+        let store = ConfigStore::open_in_memory().unwrap();
         create(&store, sample_tool("u-a", "tool_a")).unwrap();
         // 同名不同 id 应失败
         let result = create(&store, sample_tool("u-b", "tool_a"));
@@ -345,7 +346,7 @@ mod tests {
 
     #[test]
     fn test_list_and_list_enabled() {
-        let store = Store::open(":memory:").unwrap();
+        let store = ConfigStore::open_in_memory().unwrap();
         create(&store, sample_tool("u-a", "tool_a")).unwrap();
         let mut b = sample_tool("u-b", "tool_b");
         b.enabled = false;
@@ -361,7 +362,7 @@ mod tests {
 
     #[test]
     fn test_update() {
-        let store = Store::open(":memory:").unwrap();
+        let store = ConfigStore::open_in_memory().unwrap();
         create(&store, sample_tool("u-a", "tool_a")).unwrap();
         let mut t = get(&store, "u-a").unwrap().unwrap();
         t.command = "echo updated".to_string();
@@ -373,7 +374,7 @@ mod tests {
 
     #[test]
     fn test_delete() {
-        let store = Store::open(":memory:").unwrap();
+        let store = ConfigStore::open_in_memory().unwrap();
         create(&store, sample_tool("u-a", "tool_a")).unwrap();
         delete(&store, "u-a").unwrap();
         assert!(get(&store, "u-a").unwrap().is_none());
@@ -381,7 +382,7 @@ mod tests {
 
     #[test]
     fn test_set_enabled() {
-        let store = Store::open(":memory:").unwrap();
+        let store = ConfigStore::open_in_memory().unwrap();
         create(&store, sample_tool("u-a", "tool_a")).unwrap();
         set_enabled(&store, "u-a", false).unwrap();
         let t = get(&store, "u-a").unwrap().unwrap();
@@ -394,7 +395,7 @@ mod tests {
 
     #[test]
     fn test_validate_timeout_ms() {
-        let store = Store::open(":memory:").unwrap();
+        let store = ConfigStore::open_in_memory().unwrap();
         let mut t = sample_tool("u-a", "tool_a");
         t.timeout_ms = 500;
         assert!(create(&store, t.clone()).is_err());

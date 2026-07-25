@@ -378,6 +378,8 @@ const MemoEditorImpl: React.FC<MemoEditorProps> = ({
       // stays visible even when pinned memos would otherwise push it down.
       if (!memoName && !parentMemoName) {
         markNewMemo(result.memoName);
+        // 新笔记已置顶，滚动到页面顶部让用户立即可见
+        window.scrollTo({ top: 0, behavior: "smooth" });
       }
 
       // Notify parent component of successful save

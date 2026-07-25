@@ -84,8 +84,11 @@ pub fn create_attachment(
     let store = state.store();
     let attachments_dir = state.attachments_dir.clone();
 
-    // 读取存储配置
-    let cfg: StorageConfig = load_storage_config(&store);
+    // 读取存储配置（持久化在 app_config.db / ConfigStore）
+    let cfg: StorageConfig = {
+        let config_store = state.config_store();
+        load_storage_config(&config_store)
+    };
 
     let storage_type = req
         .storage_type

@@ -44,8 +44,8 @@ fn load_or_create_secret(path: &Path) -> Result<SecretKey, LanError> {
 }
 
 /// 初始化 LanState：创建 Endpoint，启用 mDNS
-pub async fn init_lan_state(data_dir: &Path) -> Result<Arc<LanState>, LanError> {
-    let key_path = data_dir.join("lan_identity.key");
+pub async fn init_lan_state(config_dir: &Path) -> Result<Arc<LanState>, LanError> {
+    let key_path = config_dir.join("lan_identity.key");
     let secret_key = load_or_create_secret(&key_path)?;
     tracing::info!("LAN Endpoint secret key loaded from {}", key_path.display());
 
@@ -93,17 +93,14 @@ pub async fn start_lan_module(app_handle: &tauri::AppHandle) -> Result<Arc<LanSt
         return Ok(lan);
     }
 
-    // 应用数据统一存储在用户目录下的 localFragNote 文件夹
-    #[allow(deprecated)]
-    let data_dir = dirs::home_dir()
-        .ok_or_else(|| LanError::LocalStore("无法获取用户目录".into()))?
-        .join("localFragNote");
-    std::fs::create_dir_all(&data_dir)?;
+    // 引导目录（Tauri app_config_dir）：存放 lan_identity.key 等共享配置
+    let config_dir = app_state.config_dir.clone();
+    std::fs::create_dir_all(&config_dir)?;
 
-    let state = init_lan_state(&data_dir).await?;
+    let state = init_lan_state(&config_dir).await?;
     let display_name = {
-        let store = app_state.store();
-        load_display_name(&store)
+        let config_store = app_state.config_store();
+        load_display_name(&config_store)
     };
     *state.display_name.write().await = display_name;
 
@@ -242,18 +239,18 @@ fn peer_id_chars_prefix(peer_id: &str, n: usize) -> String {
 }
 
 /// 从 instance_setting 读取展示名
-pub fn load_display_name(store: &memos_core::Store) -> String {
-    store
-        .with_conn(|c| store.setting.instance.get(c, DISPLAY_NAME_KEY))
+pub fn load_display_name(config_store: &memos_core::ConfigStore) -> String {
+    config_store
+        .with_conn(|c| config_store.setting.instance.get(c, DISPLAY_NAME_KEY))
         .unwrap_or(None)
         .unwrap_or_else(|| DEFAULT_DISPLAY_NAME.to_string())
 }
 
 /// 保存展示名到 instance_setting
-pub fn save_display_name(store: &memos_core::Store, name: &str) -> Result<(), LanError> {
-    store
+pub fn save_display_name(config_store: &memos_core::ConfigStore, name: &str) -> Result<(), LanError> {
+    config_store
         .with_conn(|c| {
-            store
+            config_store
                 .setting
                 .instance
                 .upsert(c, DISPLAY_NAME_KEY, name, "")
@@ -263,35 +260,35 @@ pub fn save_display_name(store: &memos_core::Store, name: &str) -> Result<(), La
 }
 
 /// 从 app_setting 读取 ACL 规则 JSON
-pub fn load_acl_rules_json(store: &memos_core::Store) -> String {
-    store
-        .with_conn(|c| store.setting.app.get(c, ACL_RULES_KEY))
+pub fn load_acl_rules_json(config_store: &memos_core::ConfigStore) -> String {
+    config_store
+        .with_conn(|c| config_store.setting.app.get(c, ACL_RULES_KEY))
         .unwrap_or(None)
         .unwrap_or_else(|| "[]".to_string())
 }
 
 /// 保存 ACL 规则 JSON 到 app_setting
-pub fn save_acl_rules_json(store: &memos_core::Store, json: &str) -> Result<(), LanError> {
-    store
-        .with_conn(|c| store.setting.app.upsert(c, ACL_RULES_KEY, json))
+pub fn save_acl_rules_json(config_store: &memos_core::ConfigStore, json: &str) -> Result<(), LanError> {
+    config_store
+        .with_conn(|c| config_store.setting.app.upsert(c, ACL_RULES_KEY, json))
         .map_err(|e| LanError::LocalStore(e.to_string()))?;
     Ok(())
 }
 
 /// 从 app_setting 读取 LAN 是否启用，默认启用。
-pub fn load_enabled(store: &memos_core::Store) -> bool {
-    store
-        .with_conn(|c| store.setting.app.get(c, ENABLED_KEY))
+pub fn load_enabled(config_store: &memos_core::ConfigStore) -> bool {
+    config_store
+        .with_conn(|c| config_store.setting.app.get(c, ENABLED_KEY))
         .unwrap_or(None)
         .map(|value| matches!(value.trim(), "1" | "true" | "TRUE" | "True"))
         .unwrap_or(true)
 }
 
 /// 保存 LAN 是否启用到 app_setting。
-pub fn save_enabled(store: &memos_core::Store, enabled: bool) -> Result<(), LanError> {
+pub fn save_enabled(config_store: &memos_core::ConfigStore, enabled: bool) -> Result<(), LanError> {
     let value = if enabled { "true" } else { "false" };
-    store
-        .with_conn(|c| store.setting.app.upsert(c, ENABLED_KEY, value))
+    config_store
+        .with_conn(|c| config_store.setting.app.upsert(c, ENABLED_KEY, value))
         .map_err(|e| LanError::LocalStore(e.to_string()))?;
     Ok(())
 }

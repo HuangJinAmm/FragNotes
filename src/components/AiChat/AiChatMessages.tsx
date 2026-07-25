@@ -2,6 +2,8 @@ import { BotIcon, UserIcon } from "lucide-react";
 import { useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import { MemoMarkdownRenderer } from "@/components/MemoContent/MemoMarkdownRenderer";
+import { MemoViewContext } from "@/components/MemoView/MemoViewContext";
+import { STUB_MEMO_VIEW_CONTEXT } from "@/components/MemoPreview/MemoPreview";
 import { useTranslate } from "@/utils/i18n";
 import { cn } from "@/lib/utils";
 import {
@@ -163,10 +165,12 @@ export function AiChatMessages({ messages }: AiChatMessagesProps) {
                 renderUserContent(msg.content)
               ) : typeof msg.content === "string" && msg.content ? (
                 <div className="break-words">
-                  <MemoMarkdownRenderer
-                    content={msg.content}
-                    resolvedMentionUsernames={new Set()}
-                  />
+                  <MemoViewContext.Provider value={STUB_MEMO_VIEW_CONTEXT}>
+                    <MemoMarkdownRenderer
+                      content={msg.content}
+                      resolvedMentionUsernames={new Set()}
+                    />
+                  </MemoViewContext.Provider>
                   {msg.streaming && (
                     <span className="inline-block w-1 h-4 ml-0.5 bg-current animate-pulse" />
                   )}

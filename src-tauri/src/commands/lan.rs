@@ -165,12 +165,12 @@ fn create_attachment_internal(
 
 fn build_lan_status(state: &AppState) -> LanStatus {
     let display_name = {
-        let store = state.store();
-        load_display_name(&store)
+        let config_store = state.config_store();
+        load_display_name(&config_store)
     };
     let enabled = {
-        let store = state.store();
-        load_enabled(&store)
+        let config_store = state.config_store();
+        load_enabled(&config_store)
     };
     let peer_id = state
         .lan()
@@ -213,12 +213,12 @@ pub async fn lan_set_enabled(
 ) -> IpcResult<LanStatus> {
     if enabled {
         start_lan_module(&app_handle).await?;
-        let store = state.store();
-        save_enabled(&store, true)?;
+        let config_store = state.config_store();
+        save_enabled(&config_store, true)?;
     } else {
         {
-            let store = state.store();
-            save_enabled(&store, false)?;
+            let config_store = state.config_store();
+            save_enabled(&config_store, false)?;
         }
         stop_lan_module(&app_handle).await?;
     }
@@ -234,8 +234,8 @@ pub async fn lan_get_local_identity(state: tauri::State<'_, AppState>) -> IpcRes
         .map(|lan| lan.endpoint.id().to_string())
         .unwrap_or_default();
     let display_name = {
-        let store = state.store();
-        load_display_name(&store)
+        let config_store = state.config_store();
+        load_display_name(&config_store)
     };
     Ok(LocalIdentity { peer_id, display_name })
 }
@@ -251,8 +251,8 @@ pub async fn lan_update_display_name(
         return Err(IpcError::BadRequest("展示名不能为空".into()));
     }
     {
-        let store = state.store();
-        save_display_name(&store, &name)?;
+        let config_store = state.config_store();
+        save_display_name(&config_store, &name)?;
     }
     let lan = state.lan()?;
     *lan.display_name.write().await = name;
@@ -262,8 +262,8 @@ pub async fn lan_update_display_name(
 /// 4. 读取 ACL 规则
 #[tauri::command]
 pub async fn lan_get_acl_rules(state: tauri::State<'_, AppState>) -> IpcResult<Vec<AclRule>> {
-    let store = state.store();
-    let json = load_acl_rules_json(&store);
+    let config_store = state.config_store();
+    let json = load_acl_rules_json(&config_store);
     Ok(crate::lan::auth::load_rules(&json))
 }
 
@@ -282,8 +282,8 @@ pub async fn lan_save_acl_rules(
         }
     }
     let json = serde_json::to_string(&req.rules)?;
-    let store = state.store();
-    save_acl_rules_json(&store, &json)?;
+    let config_store = state.config_store();
+    save_acl_rules_json(&config_store, &json)?;
     Ok(())
 }
 
@@ -402,8 +402,8 @@ pub async fn lan_copy_memo_to_local(
 
     // 4. 读取存储配置 + clone 附件目录（store guard 在块内释放，不跨 await）
     let cfg: StorageConfig = {
-        let store = state.store();
-        load_storage_config(&store)
+        let config_store = state.config_store();
+        load_storage_config(&config_store)
     };
     let attachments_dir = state.attachments_dir.clone();
 

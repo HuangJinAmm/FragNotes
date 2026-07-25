@@ -1,6 +1,6 @@
 //! Provider 配置：存储在 app_setting 表，key = "ai_providers"
 
-use memos_core::Store;
+use memos_core::ConfigStore;
 use serde::{Deserialize, Serialize};
 
 /// OpenAI 兼容 provider 配置
@@ -22,9 +22,9 @@ pub struct ProviderConfig {
 const AI_PROVIDERS_KEY: &str = "ai_providers";
 
 /// 从 app_setting 读取所有 provider 配置
-pub fn load_providers(store: &Store) -> Vec<ProviderConfig> {
-    let json: Option<String> = store
-        .with_conn(|c| store.setting.app.get(c, AI_PROVIDERS_KEY))
+pub fn load_providers(config_store: &ConfigStore) -> Vec<ProviderConfig> {
+    let json: Option<String> = config_store
+        .with_conn(|c| config_store.setting.app.get(c, AI_PROVIDERS_KEY))
         .unwrap_or(None);
     json.as_deref()
         .and_then(|s| serde_json::from_str(s).ok())
@@ -32,10 +32,10 @@ pub fn load_providers(store: &Store) -> Vec<ProviderConfig> {
 }
 
 /// 保存 provider 配置到 app_setting
-pub fn save_providers(store: &Store, providers: &[ProviderConfig]) -> memos_core::CoreResult<()> {
+pub fn save_providers(config_store: &ConfigStore, providers: &[ProviderConfig]) -> memos_core::CoreResult<()> {
     let json = serde_json::to_string(providers)
         .map_err(|e| memos_core::CoreError::Other(format!("序列化 provider 配置失败: {e}")))?;
-    store.with_conn(|c| store.setting.app.upsert(c, AI_PROVIDERS_KEY, &json))?;
+    config_store.with_conn(|c| config_store.setting.app.upsert(c, AI_PROVIDERS_KEY, &json))?;
     Ok(())
 }
 
@@ -63,14 +63,14 @@ mod tests {
 
     #[test]
     fn test_load_providers_empty() {
-        let store = Store::open(":memory:").unwrap();
-        let providers = load_providers(&store);
+        let config_store = ConfigStore::open_in_memory().unwrap();
+        let providers = load_providers(&config_store);
         assert!(providers.is_empty());
     }
 
     #[test]
     fn test_save_and_load_providers() {
-        let store = Store::open(":memory:").unwrap();
+        let config_store = ConfigStore::open_in_memory().unwrap();
         let providers = vec![ProviderConfig {
             id: "p1".to_string(),
             name: "OpenAI".to_string(),
@@ -78,8 +78,8 @@ mod tests {
             api_key: "sk-test".to_string(),
             model: "gpt-4o-mini".to_string(),
         }];
-        save_providers(&store, &providers).unwrap();
-        let loaded = load_providers(&store);
+        save_providers(&config_store, &providers).unwrap();
+        let loaded = load_providers(&config_store);
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].id, "p1");
         assert_eq!(loaded[0].name, "OpenAI");

@@ -1,6 +1,6 @@
 //! 本地 LLM 启动器配置：持久化在 app_setting 表的 `llm_runner_config` key（JSON 字符串）
 
-use memos_core::Store;
+use memos_core::ConfigStore;
 use serde::{Deserialize, Serialize};
 
 /// 启动器类型常量
@@ -121,9 +121,9 @@ pub fn effective_base_url(config: &LlmRunnerConfig) -> String {
 }
 
 /// 从 app_setting 读取配置，缺失则返回默认值
-pub fn load_config(store: &Store) -> LlmRunnerConfig {
-    let json: Option<String> = store
-        .with_conn(|c| store.setting.app.get(c, CONFIG_KEY))
+pub fn load_config(config_store: &ConfigStore) -> LlmRunnerConfig {
+    let json: Option<String> = config_store
+        .with_conn(|c| config_store.setting.app.get(c, CONFIG_KEY))
         .unwrap_or(None);
     json.as_deref()
         .and_then(|s| serde_json::from_str(s).ok())
@@ -131,11 +131,11 @@ pub fn load_config(store: &Store) -> LlmRunnerConfig {
 }
 
 /// 保存配置到 app_setting
-pub fn save_config(store: &Store, config: &LlmRunnerConfig) -> memos_core::CoreResult<()> {
+pub fn save_config(config_store: &ConfigStore, config: &LlmRunnerConfig) -> memos_core::CoreResult<()> {
     let json = serde_json::to_string(config).map_err(|e| {
         memos_core::CoreError::Other(format!("序列化 LLM 启动器配置失败: {e}"))
     })?;
-    store.with_conn(|c| store.setting.app.upsert(c, CONFIG_KEY, &json))?;
+    config_store.with_conn(|c| config_store.setting.app.upsert(c, CONFIG_KEY, &json))?;
     Ok(())
 }
 
@@ -206,23 +206,23 @@ mod tests {
 
     #[test]
     fn test_load_config_default_when_absent() {
-        let store = Store::open(":memory:").unwrap();
-        let c = load_config(&store);
+        let config_store = ConfigStore::open_in_memory().unwrap();
+        let c = load_config(&config_store);
         assert_eq!(c.port, 8080);
         assert_eq!(c.runner_type, RUNNER_TYPE_LLAMA_CPP);
     }
 
     #[test]
     fn test_save_and_load_config() {
-        let store = Store::open(":memory:").unwrap();
+        let config_store = ConfigStore::open_in_memory().unwrap();
         let mut c = LlmRunnerConfig::default();
         c.port = 9999;
         c.model_path = "/models/test.gguf".to_string();
         c.gpu_layers = 33;
         c.auto_start = true;
         c.base_url = "http://example.com:9999/v1".to_string();
-        save_config(&store, &c).unwrap();
-        let loaded = load_config(&store);
+        save_config(&config_store, &c).unwrap();
+        let loaded = load_config(&config_store);
         assert_eq!(loaded.port, 9999);
         assert_eq!(loaded.model_path, "/models/test.gguf");
         assert_eq!(loaded.gpu_layers, 33);

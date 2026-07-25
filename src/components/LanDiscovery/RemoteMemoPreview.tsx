@@ -2,6 +2,8 @@ import type { FC } from "react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { MemoMarkdownRenderer } from "@/components/MemoContent/MemoMarkdownRenderer";
+import { MemoViewContext } from "@/components/MemoView/MemoViewContext";
+import { STUB_MEMO_VIEW_CONTEXT } from "@/components/MemoPreview/MemoPreview";
 import { useRemoteMemoPreview } from "./hooks";
 import { useTranslate } from "@/utils/i18n";
 import toast from "react-hot-toast";
@@ -58,7 +60,9 @@ const RemoteMemoPreview: FC<Props> = ({ peerId, uid, onBack }) => {
   return (
     <div className="flex flex-col h-full">
       <div className="flex-1 overflow-auto p-4">
-        <MemoMarkdownRenderer content={memo.content} resolvedMentionUsernames={new Set()} />
+        <MemoViewContext.Provider value={STUB_MEMO_VIEW_CONTEXT}>
+          <MemoMarkdownRenderer content={memo.content} resolvedMentionUsernames={new Set()} />
+        </MemoViewContext.Provider>
         {memo.attachments.length > 0 && (
           <div className="mt-4">
             <div className="text-xs text-muted-foreground mb-2">
