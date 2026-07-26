@@ -23,6 +23,8 @@ pub const DISPLAY_NAME_KEY: &str = "lan_display_name";
 pub const ACL_RULES_KEY: &str = "lan_acl_rules";
 /// 是否启用 LAN 模块的 app_setting key
 pub const ENABLED_KEY: &str = "lan_enabled";
+/// 用户资料在 app_setting 的 key（与前端 connect.ts USER_PROFILE_KEY 保持一致）
+pub const USER_PROFILE_KEY: &str = "user_profile:local";
 
 /// 加载或创建 SecretKey，持久化到文件
 fn load_or_create_secret(path: &Path) -> Result<SecretKey, LanError> {
@@ -156,13 +158,21 @@ fn now_epoch_secs() -> i64 {
 /// 采用事件驱动模式（非轮询），mDNS 发现/过期时立即更新缓存。
 pub fn spawn_mdns_discovery_loop(state: Arc<LanState>, app_handle: tauri::AppHandle) {
     tauri::async_runtime::spawn(async move {
+        use std::collections::HashSet;
         use tauri::Emitter;
+        use tokio::sync::Mutex;
         use tokio_stream::StreamExt;
+
+        use crate::lan::client::call_remote;
+        use crate::lan::protocol::{Request, ResponseData};
 
         tracing::info!("LAN mDNS discovery loop: subscribe begin");
         let mut events = state.mdns.subscribe().await;
         let mut shutdown_rx = state.shutdown_tx.subscribe();
         tracing::info!("LAN mDNS discovery loop started");
+
+        // 正在进行 GetProfile 请求的 peer_id 集合，用于避免对同一 peer 重复发起并发请求
+        let in_flight: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
 
         loop {
             tokio::select! {
@@ -179,7 +189,6 @@ pub fn spawn_mdns_discovery_loop(state: Arc<LanState>, app_handle: tauri::AppHan
                     let changed = match event {
                         DiscoveryEvent::Discovered { endpoint_info, .. } => {
                             let peer_id = endpoint_info.endpoint_id.to_string();
-                            let display_name = peer_id_chars_prefix(&peer_id, 8);
                             let addrs: Vec<String> = endpoint_info
                                 .data
                                 .ip_addrs()
@@ -192,7 +201,15 @@ pub fn spawn_mdns_discovery_loop(state: Arc<LanState>, app_handle: tauri::AppHan
                                 .map(|u| u.to_string());
                             let now = now_epoch_secs();
 
+                            let prefix = peer_id_chars_prefix(&peer_id, 8);
+
+                            // 更新 peers 缓存：保留已解析的 display_name，避免被 prefix 占位符覆盖
                             let mut peers = state.peers.write().await;
+                            let display_name = peers
+                                .iter()
+                                .find(|p| p.peer_id == peer_id)
+                                .map(|p| p.display_name.clone())
+                                .unwrap_or_else(|| prefix.clone());
                             let info = PeerInfo {
                                 peer_id: peer_id.clone(),
                                 display_name,
@@ -205,11 +222,62 @@ pub fn spawn_mdns_discovery_loop(state: Arc<LanState>, app_handle: tauri::AppHan
                             } else {
                                 peers.push(info);
                             }
+                            drop(peers);
+
+                            // 异步获取真实 display_name（去重：同一 peer 同时只允许一个在途请求）
+                            // 通过 GetProfile RPC 向对端请求其设置的展示名，并更新 peers 缓存
+                            let should_spawn = in_flight.lock().await.insert(peer_id.clone());
+                            if should_spawn {
+                                let state_clone = state.clone();
+                                let app_handle_clone = app_handle.clone();
+                                let peer_id_clone = peer_id.clone();
+                                let in_flight_clone = in_flight.clone();
+                                tauri::async_runtime::spawn(async move {
+                                    let result = call_remote(
+                                        &state_clone.endpoint,
+                                        &peer_id_clone,
+                                        &Request::GetProfile,
+                                    )
+                                    .await;
+                                    in_flight_clone.lock().await.remove(&peer_id_clone);
+
+                                    match result {
+                                        Ok(ResponseData::Profile { display_name, .. }) => {
+                                            if !display_name.is_empty() {
+                                                let mut peers = state_clone.peers.write().await;
+                                                if let Some(peer) = peers
+                                                    .iter_mut()
+                                                    .find(|p| p.peer_id == peer_id_clone)
+                                                {
+                                                    peer.display_name = display_name;
+                                                }
+                                                drop(peers);
+                                                let _ =
+                                                    app_handle_clone.emit("lan:peers-changed", ());
+                                            }
+                                        }
+                                        Ok(other) => {
+                                            tracing::debug!(
+                                                peer_id = %peer_id_clone,
+                                                "GetProfile 返回非预期响应: {other:?}"
+                                            );
+                                        }
+                                        Err(e) => {
+                                            tracing::debug!(
+                                                peer_id = %peer_id_clone,
+                                                "GetProfile 失败，将在下次发现时重试: {e}"
+                                            );
+                                        }
+                                    }
+                                });
+                            }
+
                             tracing::debug!(%peer_id, "LAN mDNS discovered peer");
                             true
                         }
                         DiscoveryEvent::Expired { endpoint_id } => {
                             let peer_id = endpoint_id.to_string();
+                            in_flight.lock().await.remove(&peer_id);
                             let mut peers = state.peers.write().await;
                             let before = peers.len();
                             peers.retain(|p| p.peer_id != peer_id);
@@ -238,8 +306,26 @@ fn peer_id_chars_prefix(peer_id: &str, n: usize) -> String {
     peer_id.chars().take(n).collect()
 }
 
-/// 从 instance_setting 读取展示名
+/// 从 app_setting 读取用户资料中的 displayName
+/// 用户在"个人信息"对话框设置的 displayName 优先于 LAN 专用 display_name
+fn load_user_profile_display_name(config_store: &memos_core::ConfigStore) -> Option<String> {
+    let json = config_store
+        .with_conn(|c| config_store.setting.app.get(c, USER_PROFILE_KEY))
+        .ok()
+        .flatten()?;
+    let value: serde_json::Value = serde_json::from_str(&json).ok()?;
+    value
+        .get("displayName")
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+/// 读取展示名：优先使用用户资料中的 displayName，其次使用 LAN 专用 display_name
 pub fn load_display_name(config_store: &memos_core::ConfigStore) -> String {
+    if let Some(name) = load_user_profile_display_name(config_store) {
+        return name;
+    }
     config_store
         .with_conn(|c| config_store.setting.instance.get(c, DISPLAY_NAME_KEY))
         .unwrap_or(None)

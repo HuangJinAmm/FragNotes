@@ -73,7 +73,7 @@ export function AiChatProviderPicker({ onProviderChange, refreshKey }: AiChatPro
   // 避免 undefined → string 切换时选中值无法正确渲染。
   return (
     <Select value={selected ?? ""} onValueChange={handleChange}>
-      <SelectTrigger size="sm" className="w-full min-w-[120px]">
+      <SelectTrigger size="sm" className="w-auto min-w-[120px]">
         <SelectValue placeholder={t("aiChat.selectProvider")} />
       </SelectTrigger>
       <SelectContent>
