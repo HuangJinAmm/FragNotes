@@ -23,7 +23,11 @@ const DeckList = ({ onSelectDeck }: Props) => {
   const { generating, progress, result, generate } = useGenerateCards(generatingDeckId ?? 0);
 
   const handleCreate = async (data: { name: string; tags: string[]; cards_per_memo: number }) => {
-    await invoke("review_create_deck", data);
+    await invoke("review_create_deck", {
+      name: data.name,
+      tags: data.tags,
+      cardsPerMemo: data.cards_per_memo,
+    });
     setEditorOpen(false);
     refresh();
   };
