@@ -293,6 +293,27 @@ pub fn list_due_cards(conn: &Connection, deck_id: i32, limit: i32) -> CoreResult
     Ok(cards)
 }
 
+/// 更新卡片内容（front/back/cloze_answer/angle），不影响 FSRS 调度字段
+pub fn update_card(
+    conn: &Connection,
+    id: i32,
+    front: &str,
+    back: &str,
+    cloze_answer: Option<&str>,
+    angle: &str,
+) -> CoreResult<ReviewCard> {
+    let affected = conn.execute(
+        "UPDATE review_card
+         SET front = ?1, back = ?2, cloze_answer = ?3, angle = ?4
+         WHERE id = ?5",
+        params![front, back, cloze_answer, angle, id],
+    )?;
+    if affected == 0 {
+        return Err(CoreError::NotFound(format!("card id={id}")));
+    }
+    get_card(conn, id)?.ok_or_else(|| CoreError::NotFound(format!("card id={id}")))
+}
+
 /// 删除卡片
 pub fn delete_card(conn: &Connection, id: i32) -> CoreResult<()> {
     conn.execute("DELETE FROM review_record WHERE card_id = ?1", params![id])?;

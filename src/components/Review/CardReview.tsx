@@ -5,6 +5,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { useScoreCard } from "./hooks";
 import type { ReviewCard, SessionStats } from "./types";
 import { useTranslate } from "@/utils/i18n";
+import { MemoMarkdownRenderer } from "@/components/MemoContent/MemoMarkdownRenderer";
+import { MemoViewContext } from "@/components/MemoView/MemoViewContext";
+import { STUB_MEMO_VIEW_CONTEXT } from "@/components/MemoPreview/MemoPreview";
 
 interface Props {
   deckId: number;
@@ -124,7 +127,7 @@ const CardReview = ({ deckId, onExit }: Props) => {
 
       {/* 卡片 */}
       <div
-        className="mx-auto w-full max-w-2xl min-h-[300px] rounded-lg border-2 border-border p-8 flex flex-col items-center justify-center cursor-pointer"
+        className="mx-auto w-full max-w-2xl min-h-[300px] rounded-lg border-2 border-border p-8 flex flex-col justify-center cursor-pointer"
         style={{ perspective: "1000px" }}
         onClick={() => !flipped && setFlipped(true)}
       >
@@ -133,13 +136,27 @@ const CardReview = ({ deckId, onExit }: Props) => {
             <div className="text-xs text-muted-foreground mb-4">
               {t("review.card-type")}: {currentCard.card_type}
             </div>
-            <div className="text-lg text-center whitespace-pre-wrap">{currentCard.front}</div>
+            <div className="w-full text-lg">
+              <MemoViewContext.Provider value={STUB_MEMO_VIEW_CONTEXT}>
+                <MemoMarkdownRenderer
+                  content={currentCard.front}
+                  resolvedMentionUsernames={new Set()}
+                />
+              </MemoViewContext.Provider>
+            </div>
             <div className="mt-8 text-sm text-muted-foreground">{t("review.click-to-flip")}</div>
           </>
         ) : (
           <>
             <div className="text-xs text-muted-foreground mb-4">{t("review.answer")}</div>
-            <div className="text-lg text-center whitespace-pre-wrap">{currentCard.back}</div>
+            <div className="w-full text-lg">
+              <MemoViewContext.Provider value={STUB_MEMO_VIEW_CONTEXT}>
+                <MemoMarkdownRenderer
+                  content={currentCard.back}
+                  resolvedMentionUsernames={new Set()}
+                />
+              </MemoViewContext.Provider>
+            </div>
           </>
         )}
       </div>

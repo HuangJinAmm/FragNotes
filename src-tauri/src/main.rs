@@ -475,6 +475,7 @@ fn main() {
             commands::review::review_list_cards,
             commands::review::review_list_due_cards,
             commands::review::review_delete_card,
+            commands::review::review_update_card,
             commands::review::review_score_card,
             commands::review::review_generate_cards,
             commands::review::review_regenerate_card,

@@ -105,6 +105,32 @@ pub fn review_delete_card(state: tauri::State<'_, AppState>, card_id: i32) -> Ip
     Ok(store.with_conn(|c| review::delete_card(c, card_id))?)
 }
 
+/// 更新卡片内容（front/back/cloze_answer/angle），不影响 FSRS 调度
+#[tauri::command]
+pub fn review_update_card(
+    state: tauri::State<'_, AppState>,
+    card_id: i32,
+    front: String,
+    back: String,
+    cloze_answer: Option<String>,
+    angle: String,
+) -> IpcResult<ReviewCard> {
+    if front.trim().is_empty() {
+        return Err(IpcError::BadRequest("front 不能为空".into()));
+    }
+    let store = state.store();
+    Ok(store.with_conn(|c| {
+        review::update_card(
+            c,
+            card_id,
+            &front,
+            &back,
+            cloze_answer.as_deref(),
+            &angle,
+        )
+    })?)
+}
+
 // ==================== 统计命令 ====================
 
 #[tauri::command]

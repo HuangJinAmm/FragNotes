@@ -4,6 +4,7 @@ export { default as DeckDetail } from "./DeckDetail";
 export { default as DeckStats } from "./DeckStats";
 export { default as CardReview } from "./CardReview";
 export { default as CardTable } from "./CardTable";
+export { default as CardEditDialog } from "./CardEditDialog";
 export { default as GenerationProgress } from "./GenerationProgress";
 export { default as ReviewHeatmap } from "./ReviewHeatmap";
 export * from "./types";

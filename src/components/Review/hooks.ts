@@ -195,6 +195,41 @@ export function useScoreCard() {
   return { scoring, score };
 }
 
+/** 更新卡片内容（front/back/cloze_answer/angle） */
+export function useUpdateCard() {
+  const [saving, setSaving] = useState(false);
+
+  const update = useCallback(
+    async (params: {
+      cardId: number;
+      front: string;
+      back: string;
+      clozeAnswer: string | null;
+      angle: string;
+    }): Promise<ReviewCard | null> => {
+      setSaving(true);
+      try {
+        const result = await invoke<ReviewCard>("review_update_card", {
+          cardId: params.cardId,
+          front: params.front,
+          back: params.back,
+          clozeAnswer: params.clozeAnswer,
+          angle: params.angle,
+        });
+        return result;
+      } catch (e) {
+        console.error("更新卡片失败:", e);
+        return null;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [],
+  );
+
+  return { saving, update };
+}
+
 /** 检查新 memo 数 */
 export function useCheckNewMemos(deckId: number) {
   const [newCount, setNewCount] = useState(0);
