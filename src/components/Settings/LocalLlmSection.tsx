@@ -513,7 +513,11 @@ const LocalLlmSection = () => {
               min={1}
               max={65535}
               value={config.port}
-              onChange={(e) => update({ port: Math.max(1, Math.min(65535, Number(e.target.value) || 8080)) })}
+              onChange={(e) => update({ port: Number(e.target.value) })}
+              onBlur={(e) => {
+                const value = Math.max(1, Math.min(65535, Number(e.target.value) || 8080));
+                update({ port: value });
+              }}
             />
           </SettingListItem>
           <SettingListItem
@@ -550,7 +554,11 @@ const LocalLlmSection = () => {
               type="number"
               min={512}
               value={config.context_size}
-              onChange={(e) => update({ context_size: Math.max(512, Number(e.target.value) || 4096) })}
+              onChange={(e) => update({ context_size: Number(e.target.value) })}
+              onBlur={(e) => {
+                const value = Math.max(512, Number(e.target.value) || 4096);
+                update({ context_size: value });
+              }}
               disabled={isLms}
             />
           </SettingListItem>
@@ -563,7 +571,11 @@ const LocalLlmSection = () => {
               type="number"
               min={0}
               value={config.gpu_layers}
-              onChange={(e) => update({ gpu_layers: Math.max(0, Number(e.target.value) || 0) })}
+              onChange={(e) => update({ gpu_layers: Number(e.target.value) })}
+              onBlur={(e) => {
+                const value = Math.max(0, Number(e.target.value) || 0);
+                update({ gpu_layers: value });
+              }}
               disabled={isLms}
             />
           </SettingListItem>
