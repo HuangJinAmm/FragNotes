@@ -7,13 +7,13 @@ import { Button } from "@/components/ui/button";
 
 const SPRITE_SCALE = 2;
 
-const PRODUCT_LINKS = [
-  { label: "Website", href: "https://usememos.com/" },
-  { label: "GitHub", href: "https://github.com/usememos/memos" },
-  { label: "Docs", href: "https://usememos.com/docs" },
-];
+const PRODUCT_LINKS = [{ label: "GitHub", href: "https://github.com/HuangJinAmm/LocalFragNote" }];
 
-const PRODUCT_POINTS = ["Open. Write. Done.", "Markdown-native.", "Fully yours."];
+const PRODUCT_POINTS = [
+  "本地优先 · 所有数据均存放在本机目录，无需账号、无需联网",
+  "多模态搜索 · FTS5 全文搜索 + 本地语义向量搜索 + 标签过滤",
+  "AI 增强 · AI 聊天面板 + FSRS 间隔重复复习 + 本地 LLM 启动器",
+];
 
 const BirdSprite = ({ sprite }: { sprite: TileSprite }) => {
   return (
@@ -32,8 +32,8 @@ const About = () => {
       <div className="w-full">
         <div className="w-full rounded-xl border border-border bg-background px-4 py-4 text-muted-foreground">
           <SettingSection
-            title="About 破碎星球"
-            description="Open-source, self-hosted note-taking built for quick capture: Markdown-native, lightweight, and fully yours."
+            title="关于 破碎星球"
+            description="一款参考 Memos 项目，本地优先（local-first）的 Markdown 笔记应用，基于 Tauri 2 + React 19 + Rust 构建。"
           >
             <SettingGroup>
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -41,7 +41,7 @@ const About = () => {
                   <img className="size-12 shrink-0 select-none rounded-md" src="/logo2.png" alt="" draggable={false} />
                   <div className="min-w-0">
                     <h1 className="text-2xl font-semibold tracking-tight text-foreground">破碎星球</h1>
-                    <p className="mt-1 text-sm text-muted-foreground">Capture first. Keep it yours.</p>
+                    <p className="mt-1 text-sm text-muted-foreground">LocalFragNote · 本地优先的 Markdown 笔记</p>
                   </div>
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-2">
@@ -59,8 +59,8 @@ const About = () => {
 
             <SettingGroup
               showSeparator
-              title="Product"
-              description="A small timeline for notes that should be saved now and organized later."
+              title="核心特性"
+              description="全文/语义搜索、附件管理、FSRS 复习、AI 聊天与局域网发现分享，所有数据均存放在用户本机目录。"
             >
               <div className="grid gap-3 sm:grid-cols-3">
                 {PRODUCT_POINTS.map((item) => (
