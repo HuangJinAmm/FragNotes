@@ -83,6 +83,20 @@ impl AppState {
         self.config_store.lock().expect("ConfigStore Mutex poisoned")
     }
 
+    /// 关闭文件数据库连接（用内存占位替换），在重启前释放文件锁
+    pub fn close_databases(&self) {
+        if let Ok(new_store) = memos_core::Store::open_in_memory() {
+            if let Ok(mut guard) = self.store.lock() {
+                *guard = new_store;
+            }
+        }
+        if let Ok(new_config_store) = memos_core::ConfigStore::open_in_memory() {
+            if let Ok(mut guard) = self.config_store.lock() {
+                *guard = new_config_store;
+            }
+        }
+    }
+
     /// 获取当前 active workspace 的路径，无则返回 None
     pub fn active_workspace_path(&self) -> Option<PathBuf> {
         let reg = self

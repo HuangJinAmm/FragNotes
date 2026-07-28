@@ -34,6 +34,8 @@ impl Store {
         let conn = Connection::open(db_path)?;
         // 启用外键支持
         conn.execute("PRAGMA foreign_keys = ON", [])?;
+        // 设置 busy timeout，避免重启时旧进程尚未释放文件锁导致新进程打开失败
+        conn.execute_batch("PRAGMA busy_timeout = 5000;")?;
         // 迁移（V3 含 vec0 建表语句，必须在扩展注册之后）
         let mut conn_mut = conn;
         migration::run(&mut conn_mut)?;
@@ -48,6 +50,7 @@ impl Store {
     pub fn open_in_memory() -> CoreResult<Self> {
         ensure_vec_extension_loaded();
         let conn = Connection::open_in_memory()?;
+        conn.execute_batch("PRAGMA busy_timeout = 5000;")?;
         let mut conn_mut = conn;
         migration::run(&mut conn_mut)?;
         let conn = conn_mut;

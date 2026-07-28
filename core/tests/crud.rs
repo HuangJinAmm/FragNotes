@@ -15,7 +15,7 @@ fn open_test_store() -> Store {
 fn store_open_runs_migrations() {
     let store = open_test_store();
     let conn = store.lock_conn();
-    for table in ["memo", "attachment", "memo_relation", "reaction", "app_setting", "instance_setting"] {
+    for table in ["memo", "attachment", "memo_relation", "reaction"] {
         let count: i32 = conn
             .query_row(
                 &format!("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='{table}'"),
@@ -40,6 +40,7 @@ fn memo_crud_full_cycle() {
         pinned: false,
         payload: json!({"tags": ["#test"]}),
         location: None,
+        parent_id: None,
     })
     .expect("创建 memo 失败");
     assert_eq!(created.uid, "test_memo_1");
@@ -90,10 +91,12 @@ fn memo_uid_conflict() {
     memo::create(&conn, &CreateMemo {
         uid: "dup".into(), content: "".into(), visibility: Visibility::Private, pinned: false, payload: json!({}),
         location: None,
+        parent_id: None,
     }).unwrap();
     let err = memo::create(&conn, &CreateMemo {
         uid: "dup".into(), content: "".into(), visibility: Visibility::Private, pinned: false, payload: json!({}),
         location: None,
+        parent_id: None,
     })
     .expect_err("应拒绝重复 UID");
     assert!(matches!(err, CoreError::UidConflict(_)));
@@ -106,6 +109,7 @@ fn memo_invalid_uid() {
     let err = memo::create(&conn, &CreateMemo {
         uid: "invalid uid!".into(), content: "".into(), visibility: Visibility::Private, pinned: false, payload: json!({}),
         location: None,
+        parent_id: None,
     })
     .expect_err("应拒绝非法 UID");
     assert!(matches!(err, CoreError::InvalidUid));
@@ -118,10 +122,12 @@ fn memo_archive_and_filter() {
     let m1 = memo::create(&conn, &CreateMemo {
         uid: "m1".into(), content: "a".into(), visibility: Visibility::Public, pinned: false, payload: json!({}),
         location: None,
+        parent_id: None,
     }).unwrap();
     let _m2 = memo::create(&conn, &CreateMemo {
         uid: "m2".into(), content: "b".into(), visibility: Visibility::Public, pinned: false, payload: json!({}),
         location: None,
+        parent_id: None,
     }).unwrap();
     memo::update(&conn, &UpdateMemo { id: m1.id, row_status: Some(RowStatus::Archived), ..Default::default() }).unwrap();
 
@@ -266,10 +272,12 @@ fn memo_relation_crud() {
     let m1 = memo::create(&conn, &CreateMemo {
         uid: "rm1".into(), content: "".into(), visibility: Visibility::Private, pinned: false, payload: json!({}),
         location: None,
+        parent_id: None,
     }).unwrap();
     let m2 = memo::create(&conn, &CreateMemo {
         uid: "rm2".into(), content: "".into(), visibility: Visibility::Private, pinned: false, payload: json!({}),
         location: None,
+        parent_id: None,
     }).unwrap();
 
     let rel = memo_relation::upsert(&conn, &UpsertMemoRelation {
@@ -304,10 +312,12 @@ fn memo_delete_cascades_relations() {
     let m1 = memo::create(&conn, &CreateMemo {
         uid: "cm1".into(), content: "".into(), visibility: Visibility::Private, pinned: false, payload: json!({}),
         location: None,
+        parent_id: None,
     }).unwrap();
     let m2 = memo::create(&conn, &CreateMemo {
         uid: "cm2".into(), content: "".into(), visibility: Visibility::Private, pinned: false, payload: json!({}),
         location: None,
+        parent_id: None,
     }).unwrap();
 
     memo_relation::upsert(&conn, &UpsertMemoRelation {
@@ -328,7 +338,7 @@ fn memo_delete_cascades_relations() {
 
 #[test]
 fn app_setting_crud_with_cache() {
-    let store = open_test_store();
+    let store = ConfigStore::open_in_memory().expect("打开内存配置数据库失败");
     store.with_conn(|c| store.setting.app.upsert(c, "locale", "zh-CN")).unwrap();
 
     // 读取（应命中缓存）
@@ -348,7 +358,7 @@ fn app_setting_crud_with_cache() {
 
 #[test]
 fn instance_setting_crud() {
-    let store = open_test_store();
+    let store = ConfigStore::open_in_memory().expect("打开内存配置数据库失败");
     store.with_conn(|c| store.setting.instance.upsert(c, "BASIC", "{\"title\":\"Memos\"}", "")).unwrap();
     let v = store.with_conn(|c| store.setting.instance.get(c, "BASIC")).unwrap();
     assert_eq!(v.as_deref(), Some("{\"title\":\"Memos\"}"));
@@ -366,11 +376,13 @@ fn memo_filter_by_content() {
         uid: "fc1".into(), content: "Rust 学习笔记".into(),
         visibility: Visibility::Private, pinned: false, payload: json!({}),
         location: None,
+        parent_id: None,
     }).unwrap();
     memo::create(&conn, &CreateMemo {
         uid: "fc2".into(), content: "Go 与 Rust 对比".into(),
         visibility: Visibility::Private, pinned: false, payload: json!({}),
         location: None,
+        parent_id: None,
     }).unwrap();
 
     let list = memo::list(&conn, &FindMemo {
@@ -395,16 +407,19 @@ fn memo_filter_by_tag() {
         uid: "ft1".into(), content: "Hello #rust world".into(),
         visibility: Visibility::Private, pinned: false, payload: json!({}),
         location: None,
+        parent_id: None,
     }).unwrap();
     memo::create(&conn, &CreateMemo {
         uid: "ft2".into(), content: "More #rust and #cli".into(),
         visibility: Visibility::Private, pinned: false, payload: json!({}),
         location: None,
+        parent_id: None,
     }).unwrap();
     memo::create(&conn, &CreateMemo {
         uid: "ft3".into(), content: "Unrelated #rusty text".into(),
         visibility: Visibility::Private, pinned: false, payload: json!({}),
         location: None,
+        parent_id: None,
     }).unwrap();
 
     // 单 tag
@@ -431,6 +446,7 @@ fn memo_filter_by_tag_with_exclude_content() {
         uid: "fe1".into(), content: "Secret #note here".into(),
         visibility: Visibility::Private, pinned: false, payload: json!({}),
         location: None,
+        parent_id: None,
     }).unwrap();
 
     let list = memo::list(&conn, &FindMemo {
@@ -450,11 +466,13 @@ fn memo_filter_by_time_range() {
         uid: "tm1".into(), content: "old".into(),
         visibility: Visibility::Private, pinned: false, payload: json!({}),
         location: None,
+        parent_id: None,
     }).unwrap();
     let _m2 = memo::create(&conn, &CreateMemo {
         uid: "tm2".into(), content: "new".into(),
         visibility: Visibility::Private, pinned: false, payload: json!({}),
         location: None,
+        parent_id: None,
     }).unwrap();
 
     // 显式把 m1 的 created_ts 设为很久以前
@@ -487,6 +505,7 @@ fn memo_filter_with_pagination() {
             uid: format!("pg{i}"), content: format!("item {i}").into(),
             visibility: Visibility::Private, pinned: false, payload: json!({}),
             location: None,
+            parent_id: None,
         }).unwrap();
     }
 
@@ -524,6 +543,7 @@ fn tag_table_syncs_on_create() {
         pinned: false,
         payload: json!({}),
         location: None,
+        parent_id: None,
     }).unwrap();
 
     let tags = tag::list_tags(&conn).unwrap();
@@ -547,6 +567,7 @@ fn tag_table_empty_when_no_tags() {
         pinned: false,
         payload: json!({}),
         location: None,
+        parent_id: None,
     }).unwrap();
 
     let tags = tag::list_tags(&conn).unwrap();
@@ -565,6 +586,7 @@ fn tag_table_syncs_on_update_content() {
         pinned: false,
         payload: json!({}),
         location: None,
+        parent_id: None,
     }).unwrap();
 
     memo::update(&conn, &UpdateMemo {
@@ -597,6 +619,7 @@ fn tag_table_removes_tag_when_removed_from_content() {
         pinned: false,
         payload: json!({}),
         location: None,
+        parent_id: None,
     }).unwrap();
 
     memo::update(&conn, &UpdateMemo {
@@ -628,6 +651,7 @@ fn tag_table_no_sync_when_content_unchanged() {
         pinned: false,
         payload: json!({}),
         location: None,
+        parent_id: None,
     }).unwrap();
 
     memo::update(&conn, &UpdateMemo {
@@ -658,6 +682,7 @@ fn tag_table_decrements_on_delete() {
             pinned: false,
             payload: json!({}),
             location: None,
+            parent_id: None,
         }).unwrap();
         drop(conn);
         store.with_conn_mut(|c| memo::delete(c, created.id)).unwrap();
@@ -678,6 +703,7 @@ fn tag_table_decrements_on_archive() {
         pinned: false,
         payload: json!({}),
         location: None,
+        parent_id: None,
     }).unwrap();
 
     memo::update(&conn, &UpdateMemo {
@@ -707,6 +733,7 @@ fn tag_table_increments_on_unarchive() {
         pinned: false,
         payload: json!({}),
         location: None,
+        parent_id: None,
     }).unwrap();
 
     memo::update(&conn, &UpdateMemo {
@@ -744,10 +771,12 @@ fn tag_table_list_ordered_by_count() {
     memo::create(&conn, &CreateMemo {
         uid: "t1".to_string(), content: "#rust".to_string(),
         visibility: Visibility::Private, pinned: false, payload: json!({}), location: None,
+        parent_id: None,
     }).unwrap();
     memo::create(&conn, &CreateMemo {
         uid: "t2".to_string(), content: "#rust #ai".to_string(),
         visibility: Visibility::Private, pinned: false, payload: json!({}), location: None,
+        parent_id: None,
     }).unwrap();
 
     let tags = tag::list_tags(&conn).unwrap();

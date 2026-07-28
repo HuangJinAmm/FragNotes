@@ -151,7 +151,7 @@ pub async fn workspace_switch(
 
     std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_millis(500));
-        app_handle.restart();
+        app_handle.request_restart();
     });
 
     Ok(())

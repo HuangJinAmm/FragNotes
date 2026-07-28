@@ -86,7 +86,6 @@ const Navigation = (props: Props) => {
         <NavLink className="mb-3 cursor-default" to={Routes.HOME}>
           <MemosLogo collapsed={collapsed} />
         </NavLink>
-        <WorkspaceSwitcher collapsed={collapsed} />
         <TooltipProvider>
           {primaryNavLinks.map((navLink) => (
             <NavLink
@@ -144,7 +143,8 @@ const Navigation = (props: Props) => {
           ))}
         </TooltipProvider>
       </div>
-      <div className={cn("w-full flex flex-col justify-end", props.collapsed ? "items-center" : "items-start pl-3")}>
+      <div className={cn("w-full flex flex-col justify-end space-y-2", props.collapsed ? "items-center" : "items-start pl-3")}>
+        <WorkspaceSwitcher collapsed={collapsed} />
         <UserMenu collapsed={collapsed} />
       </div>
     </header>

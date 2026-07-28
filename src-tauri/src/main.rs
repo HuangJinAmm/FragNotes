@@ -85,6 +85,8 @@ fn cleanup_app_resources(app_handle: &tauri::AppHandle) {
     stop_llm_runner(app_handle);
     stop_mcp_with_timeout(app_handle);
     stop_officecli_watch(app_handle);
+    // 关闭 SQLite 文件连接，避免重启时新进程因文件锁打开数据库失败
+    state.close_databases();
     tracing::info!(pid = current_pid(), "退出清理：完成");
 }
 

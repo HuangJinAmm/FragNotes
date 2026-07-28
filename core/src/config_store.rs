@@ -19,6 +19,7 @@ impl ConfigStore {
     pub fn open<P: AsRef<Path>>(db_path: P) -> CoreResult<Self> {
         let conn = Connection::open(db_path)?;
         conn.execute("PRAGMA foreign_keys = ON", [])?;
+        conn.execute_batch("PRAGMA busy_timeout = 5000;")?;
         let mut conn_mut = conn;
         crate::config_migration::run(&mut conn_mut)?;
         let conn = conn_mut;
@@ -36,6 +37,7 @@ impl ConfigStore {
 
     pub fn open_in_memory() -> CoreResult<Self> {
         let conn = Connection::open_in_memory()?;
+        conn.execute_batch("PRAGMA busy_timeout = 5000;")?;
         let mut conn_mut = conn;
         crate::config_migration::run(&mut conn_mut)?;
         let conn = conn_mut;

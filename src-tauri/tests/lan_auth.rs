@@ -18,6 +18,7 @@ fn make_memo(uid: &str, content: &str) -> Memo {
                 pinned: false,
                 payload: serde_json::Value::Object(Default::default()),
                 location: None,
+                parent_id: None,
             })
         })
         .unwrap();
