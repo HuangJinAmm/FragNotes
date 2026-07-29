@@ -1,5 +1,5 @@
 [package]
-name = "memos-app"
+name = "frag-note-app"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
