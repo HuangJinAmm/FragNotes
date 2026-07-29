@@ -17,10 +17,14 @@ jobs:
         shell: bash
         run: |
           if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+            RAW="${GITHUB_REF_NAME#v}"
           else
-            echo "VERSION=0.0.0-dev" >> $GITHUB_OUTPUT
+            RAW="0.0.0"
           fi
+          # MSI 要求版本号为 X.Y.Z 或 X.Y.Z.N（N 为纯数字 ≤65535）
+          # 移除非数字预发布后缀（如 -beta.1），仅保留 X.Y.Z
+          VERSION=$(echo "${RAW}" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')
+          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
 
       - name: Update version in tauri.conf.json
         shell: bash
