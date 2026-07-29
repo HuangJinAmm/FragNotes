@@ -63,7 +63,7 @@
 **Files:**
 - Modify: `src-tauri/Cargo.toml`
 
-- [ ] **Step 1: 添加依赖到 Cargo.toml**
+- [x] **Step 1: 添加依赖到 Cargo.toml**
 
 在 `src-tauri/Cargo.toml` 的 `[dependencies]` 末尾（`ureq = "2"` 之后）添加：
 
@@ -74,14 +74,14 @@ anyhow = "1"
 tokio = { version = "1", features = ["full"] }
 ```
 
-- [ ] **Step 2: 验证依赖编译**
+- [x] **Step 2: 验证依赖编译**
 
 Run: `cd src-tauri && cargo check`
 Expected: 成功编译（首次会下载大量依赖，可能需要几分钟）
 
 如果 iroh 1.x API 与文档不符（文档基于 2026-07 版本），记录实际 API 差异并在后续任务中调整。
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src-tauri/Cargo.toml src-tauri/Cargo.lock
@@ -97,7 +97,7 @@ git commit -m "deps: add iroh, iroh-mdns-address-lookup, anyhow, tokio for LAN d
 - Modify: `src-tauri/src/main.rs`（注册 lan 模块）
 - Modify: `src-tauri/src/error.rs`（IpcError 扩展）
 
-- [ ] **Step 1: 创建 lan/mod.rs 骨架**
+- [x] **Step 1: 创建 lan/mod.rs 骨架**
 
 ```rust
 //! 局域网发现与分享模块
@@ -179,7 +179,7 @@ pub const RPC_TIMEOUT_SECS: u64 = 10;
 pub const ATTACHMENT_TIMEOUT_SECS: u64 = 60;
 ```
 
-- [ ] **Step 2: 在 main.rs 注册 lan 模块**
+- [x] **Step 2: 在 main.rs 注册 lan 模块**
 
 在 `src-tauri/src/main.rs` 顶部 mod 声明区添加（在 `mod lan` 之前是 `mod embedding`）：
 
@@ -187,7 +187,7 @@ pub const ATTACHMENT_TIMEOUT_SECS: u64 = 60;
 mod lan;
 ```
 
-- [ ] **Step 3: 创建空骨架文件让模块编译**
+- [x] **Step 3: 创建空骨架文件让模块编译**
 
 创建以下空文件（每个仅一行 `//!` 注释）：
 
@@ -216,7 +216,7 @@ mod lan;
 //! 客户端：发起连接与请求远端
 ```
 
-- [ ] **Step 4: 扩展 IpcError 支持 LanError**
+- [x] **Step 4: 扩展 IpcError 支持 LanError**
 
 在 `src-tauri/src/error.rs` 的 `IpcError` enum 中新增变体（在 `BadRequest(String)` 之后）：
 
@@ -241,12 +241,12 @@ impl From<crate::lan::LanError> for IpcError {
 }
 ```
 
-- [ ] **Step 5: 验证编译**
+- [x] **Step 5: 验证编译**
 
 Run: `cd src-tauri && cargo check`
 Expected: 成功
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src-tauri/src/lan/ src-tauri/src/main.rs src-tauri/src/error.rs
@@ -261,7 +261,7 @@ git commit -m "feat(lan): scaffold lan module with LanError and LanState types"
 - Modify: `src-tauri/src/lan/protocol.rs`
 - Create: `src-tauri/tests/lan_protocol.rs`
 
-- [ ] **Step 1: 编写帧编解码失败测试**
+- [x] **Step 1: 编写帧编解码失败测试**
 
 创建 `src-tauri/tests/lan_protocol.rs`：
 
@@ -383,12 +383,12 @@ fn test_unknown_method_rejected() {
 }
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `cd src-tauri && cargo test --test lan_protocol`
 Expected: 编译失败（`write_frame`、`read_frame`、`Request` 等未定义）
 
-- [ ] **Step 3: 实现 protocol.rs**
+- [x] **Step 3: 实现 protocol.rs**
 
 完整替换 `src-tauri/src/lan/protocol.rs` 内容：
 
@@ -563,16 +563,16 @@ pub fn err(code: u16, message: impl Into<String>) -> Response {
 }
 ```
 
-- [ ] **Step 4: 让 crate 暴露 lan 模块用于测试**
+- [x] **Step 4: 让 crate 暴露 lan 模块用于测试**
 
 在 `src-tauri/src/main.rs` 顶部的 `mod lan;` 改为 `pub mod lan;`（让集成测试可访问）。
 
-- [ ] **Step 5: 运行测试确认通过**
+- [x] **Step 5: 运行测试确认通过**
 
 Run: `cd src-tauri && cargo test --test lan_protocol`
 Expected: 8 个测试全部 PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src-tauri/src/lan/protocol.rs src-tauri/src/main.rs src-tauri/tests/lan_protocol.rs
@@ -587,7 +587,7 @@ git commit -m "feat(lan): implement JSON-RPC protocol types and frame codec with
 - Modify: `src-tauri/src/lan/auth.rs`
 - Create: `src-tauri/tests/lan_auth.rs`
 
-- [ ] **Step 1: 编写 ACL 过滤失败测试**
+- [x] **Step 1: 编写 ACL 过滤失败测试**
 
 创建 `src-tauri/tests/lan_auth.rs`：
 
@@ -749,12 +749,12 @@ fn test_deny_overrides_allow_for_same_tag() {
 }
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `cd src-tauri && cargo test --test lan_auth`
 Expected: 编译失败（`AclRule`、`filter_memos_for_peer` 未定义）
 
-- [ ] **Step 3: 实现 auth.rs**
+- [x] **Step 3: 实现 auth.rs**
 
 完整替换 `src-tauri/src/lan/auth.rs` 内容：
 
@@ -841,12 +841,12 @@ pub fn is_memo_visible(memo: &Memo, peer_id: &str, rules: &[AclRule]) -> bool {
 }
 ```
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 Run: `cd src-tauri && cargo test --test lan_auth`
 Expected: 10 个测试全部 PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src-tauri/src/lan/auth.rs src-tauri/tests/lan_auth.rs
@@ -861,7 +861,7 @@ git commit -m "feat(lan): implement ACL filter with 10 unit tests covering all s
 - Modify: `src-tauri/src/lan/endpoint.rs`
 - Modify: `src-tauri/src/state.rs`
 
-- [ ] **Step 1: 实现 endpoint.rs**
+- [x] **Step 1: 实现 endpoint.rs**
 
 完整替换 `src-tauri/src/lan/endpoint.rs` 内容：
 
@@ -982,7 +982,7 @@ pub fn save_acl_rules_json(store: &memos_core::Store, json: &str) -> Result<(), 
 - `endpoint_id()` 可能叫 `node_id()` 或需要通过 `endpoint.secret_key().public()` 获取
 - `MdnsAddressLookup::builder()` 可能需要传入元数据参数
 
-- [ ] **Step 2: 扩展 AppState 持有 LanState**
+- [x] **Step 2: 扩展 AppState 持有 LanState**
 
 修改 `src-tauri/src/state.rs`，完整替换为：
 
@@ -1015,12 +1015,12 @@ impl AppState {
 }
 ```
 
-- [ ] **Step 3: 验证编译**
+- [x] **Step 3: 验证编译**
 
 Run: `cd src-tauri && cargo check`
 Expected: 成功（如果 iroh API 不匹配，按 Step 1 注释调整）
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src-tauri/src/lan/endpoint.rs src-tauri/src/state.rs
@@ -1034,7 +1034,7 @@ git commit -m "feat(lan): implement endpoint init, secret key persistence, AppSt
 **Files:**
 - Modify: `src-tauri/src/main.rs`
 
-- [ ] **Step 1: 在 setup 阶段初始化 LanState**
+- [x] **Step 1: 在 setup 阶段初始化 LanState**
 
 修改 `src-tauri/src/main.rs` 的 `setup` 闭包，在 `app.manage(AppState {...})` 之前添加 LAN 初始化。
 
@@ -1064,7 +1064,7 @@ git commit -m "feat(lan): implement endpoint init, secret key persistence, AppSt
             });
 ```
 
-- [ ] **Step 2: 注册 lan 命令模块**
+- [x] **Step 2: 注册 lan 命令模块**
 
 在 `src-tauri/src/commands/mod.rs` 末尾添加：
 
@@ -1072,7 +1072,7 @@ git commit -m "feat(lan): implement endpoint init, secret key persistence, AppSt
 pub mod lan;
 ```
 
-- [ ] **Step 3: 在 invoke_handler 注册 lan 命令（先占位）**
+- [x] **Step 3: 在 invoke_handler 注册 lan 命令（先占位）**
 
 在 `src-tauri/src/main.rs` 的 `.invoke_handler(tauri::generate_handler![...])` 中，在 `commands::ai_chat::save_providers_cmd,` 之后添加：
 
@@ -1090,7 +1090,7 @@ pub mod lan;
             commands::lan::lan_copy_memo_to_local,
 ```
 
-- [ ] **Step 4: 创建 commands/lan.rs 骨架（让编译通过）**
+- [x] **Step 4: 创建 commands/lan.rs 骨架（让编译通过）**
 
 创建 `src-tauri/src/commands/lan.rs`，所有命令暂时返回未实现错误：
 
@@ -1245,7 +1245,7 @@ pub async fn lan_copy_memo_to_local(
 }
 ```
 
-- [ ] **Step 5: 验证编译并运行应用**
+- [x] **Step 5: 验证编译并运行应用**
 
 Run: `cd src-tauri && cargo check`
 Expected: 成功
@@ -1253,7 +1253,7 @@ Expected: 成功
 Run: `cd src-tauri && cargo run`
 Expected: 应用启动，日志中应看到 `LAN 模块启动成功` 或 `LAN 模块启动失败`（前者为正常，后者记录原因）
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src-tauri/src/main.rs src-tauri/src/commands/mod.rs src-tauri/src/commands/lan.rs
@@ -1267,7 +1267,7 @@ git commit -m "feat(lan): wire up LanState init in main setup, register lan comm
 **Files:**
 - Modify: `src-tauri/src/lan/client.rs`
 
-- [ ] **Step 1: 实现 client.rs**
+- [x] **Step 1: 实现 client.rs**
 
 完整替换 `src-tauri/src/lan/client.rs` 内容：
 
@@ -1360,12 +1360,12 @@ async fn call_remote_with_timeout(
 - `peer_id.parse::<EndpointAddr>()` 可能需要 `EndpointAddr::from_str(peer_id)`
 - `endpoint.connect(&addr, ALPN)` 可能需要 `endpoint.connect(addr, ALPN)`（无引用）
 
-- [ ] **Step 2: 验证编译**
+- [x] **Step 2: 验证编译**
 
 Run: `cd src-tauri && cargo check`
 Expected: 成功
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src-tauri/src/lan/client.rs
@@ -1380,7 +1380,7 @@ git commit -m "feat(lan): implement call_remote client with connect/rpc/attachme
 - Modify: `src-tauri/src/lan/server.rs`
 - Modify: `src-tauri/src/main.rs`（启动 server task）
 
-- [ ] **Step 1: 实现 server.rs**
+- [x] **Step 1: 实现 server.rs**
 
 完整替换 `src-tauri/src/lan/server.rs` 内容：
 
@@ -1736,7 +1736,7 @@ fn snippet_text(content: &str, max: usize) -> String {
 }
 ```
 
-- [ ] **Step 2: 在 main.rs 启动 server accept loop**
+- [x] **Step 2: 在 main.rs 启动 server accept loop**
 
 在 `src-tauri/src/main.rs` 的 setup 闭包中，在 `app.manage(AppState {...})` 之后（在 backfill_embeddings 之前）添加：
 
@@ -1748,12 +1748,12 @@ fn snippet_text(content: &str, max: usize) -> String {
             }
 ```
 
-- [ ] **Step 3: 验证编译**
+- [x] **Step 3: 验证编译**
 
 Run: `cd src-tauri && cargo check`
 Expected: 成功
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src-tauri/src/lan/server.rs src-tauri/src/main.rs
@@ -1767,7 +1767,7 @@ git commit -m "feat(lan): implement server accept loop with 4 handlers (profile/
 **Files:**
 - Modify: `src-tauri/src/commands/lan.rs`
 
-- [ ] **Step 1: 完整实现 commands/lan.rs**
+- [x] **Step 1: 完整实现 commands/lan.rs**
 
 完整替换 `src-tauri/src/commands/lan.rs` 内容：
 
@@ -2116,7 +2116,7 @@ fn generate_uid() -> String {
 }
 ```
 
-- [ ] **Step 2: 验证编译**
+- [x] **Step 2: 验证编译**
 
 Run: `cd src-tauri && cargo check`
 Expected: 成功
@@ -2125,7 +2125,7 @@ Expected: 成功
 - 将 `create_attachment` 的核心逻辑提取为 `pub fn create_attachment_inner(state: &AppState, req: CreateAttachmentRequest) -> IpcResult<Attachment>`
 - 命令 wrapper 调用 inner
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src-tauri/src/commands/lan.rs
@@ -2139,7 +2139,7 @@ git commit -m "feat(lan): implement all 10 Tauri commands for discovery/profile/
 **Files:**
 - Modify: `src-tauri/src/lan/endpoint.rs`
 
-- [ ] **Step 1: 添加 mDNS 事件监听 task**
+- [x] **Step 1: 添加 mDNS 事件监听 task**
 
 在 `src-tauri/src/lan/endpoint.rs` 末尾添加：
 
@@ -2186,7 +2186,7 @@ pub fn spawn_mdns_discovery_loop(state: std::sync::Arc<LanState>, app_handle: ta
 
 如果 mDNS API 不可直接枚举发现的 peers，备选方案是：监听 `endpoint.accept()` 的连接事件，维护"曾连接过的 peers"列表。但这会丢失"被动发现但未连接"的 peers。
 
-- [ ] **Step 2: 在 main.rs 启动 mDNS 发现 task**
+- [x] **Step 2: 在 main.rs 启动 mDNS 发现 task**
 
 在 `src-tauri/src/main.rs` setup 闭包中，在 `lan::server::spawn_accept_loop(...)` 之后添加：
 
@@ -2194,12 +2194,12 @@ pub fn spawn_mdns_discovery_loop(state: std::sync::Arc<LanState>, app_handle: ta
                 lan::endpoint::spawn_mdns_discovery_loop(lan_state.clone(), app.handle().clone());
 ```
 
-- [ ] **Step 3: 验证编译**
+- [x] **Step 3: 验证编译**
 
 Run: `cd src-tauri && cargo check`
 Expected: 成功
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src-tauri/src/lan/endpoint.rs src-tauri/src/main.rs
@@ -2213,7 +2213,7 @@ git commit -m "feat(lan): spawn mDNS discovery loop with peers-changed event emi
 **Files:**
 - Create: `src-tauri/tests/lan_integration.rs`
 
-- [ ] **Step 1: 编写集成测试**
+- [x] **Step 1: 编写集成测试**
 
 创建 `src-tauri/tests/lan_integration.rs`：
 
@@ -2269,7 +2269,7 @@ async fn test_two_endpoints_profile_rpc() {
 }
 ```
 
-- [ ] **Step 2: 添加 tempfile 依赖到 dev-dependencies**
+- [x] **Step 2: 添加 tempfile 依赖到 dev-dependencies**
 
 在 `src-tauri/Cargo.toml` 末尾添加（如果没有 `[dev-dependencies]` 段则创建）：
 
@@ -2278,17 +2278,17 @@ async fn test_two_endpoints_profile_rpc() {
 tempfile = "3"
 ```
 
-- [ ] **Step 3: 验证编译**
+- [x] **Step 3: 验证编译**
 
 Run: `cd src-tauri && cargo test --test lan_integration --no-run`
 Expected: 编译成功
 
-- [ ] **Step 4: 运行集成测试（本地手动）**
+- [x] **Step 4: 运行集成测试（本地手动）**
 
 Run: `cd src-tauri && cargo test --test lan_integration -- --ignored`
 Expected: PASS（需要真实 mDNS 环境）
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src-tauri/tests/lan_integration.rs src-tauri/Cargo.toml
@@ -2304,7 +2304,7 @@ git commit -m "test(lan): add integration test for two-endpoint RPC (manual run,
 - Modify: `src/locales/en.json`
 - Modify: `src/locales/zh-Hans.json`
 
-- [ ] **Step 1: 创建 types.ts**
+- [x] **Step 1: 创建 types.ts**
 
 创建 `src/components/LanDiscovery/types.ts`：
 
@@ -2374,7 +2374,7 @@ export interface AclRule {
 export type AclAccessMode = "default-open" | "restrict-tags" | "completely-blocked";
 ```
 
-- [ ] **Step 2: 添加 i18n key 到 en.json**
+- [x] **Step 2: 添加 i18n key 到 en.json**
 
 在 `src/locales/en.json` 顶层对象中（在 `"aiChat": {...}` 之后）添加：
 
@@ -2422,7 +2422,7 @@ export type AclAccessMode = "default-open" | "restrict-tags" | "completely-block
   },
 ```
 
-- [ ] **Step 3: 添加 i18n key 到 zh-Hans.json**
+- [x] **Step 3: 添加 i18n key 到 zh-Hans.json**
 
 在 `src/locales/zh-Hans.json` 顶层对象中（在 `"aiChat": {...}` 之后）添加：
 
@@ -2470,12 +2470,12 @@ export type AclAccessMode = "default-open" | "restrict-tags" | "completely-block
   },
 ```
 
-- [ ] **Step 4: 验证 JSON 格式**
+- [x] **Step 4: 验证 JSON 格式**
 
 Run: `node -e "JSON.parse(require('fs').readFileSync('src/locales/en.json','utf8')); JSON.parse(require('fs').readFileSync('src/locales/zh-Hans.json','utf8')); console.log('OK')"`
 Expected: `OK`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/components/LanDiscovery/types.ts src/locales/en.json src/locales/zh-Hans.json
@@ -2489,7 +2489,7 @@ git commit -m "feat(lan): add TypeScript types and i18n keys for LAN discovery"
 **Files:**
 - Create: `src/components/LanDiscovery/hooks.ts`
 
-- [ ] **Step 1: 实现 hooks.ts**
+- [x] **Step 1: 实现 hooks.ts**
 
 创建 `src/components/LanDiscovery/hooks.ts`：
 
@@ -2693,12 +2693,12 @@ export function useRemoteMemoPreview(peerId: string | null, uid: string | null) 
 }
 ```
 
-- [ ] **Step 2: 验证 TS 编译**
+- [x] **Step 2: 验证 TS 编译**
 
 Run: `npx tsc --noEmit`
 Expected: 成功
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/components/LanDiscovery/hooks.ts
@@ -2707,7 +2707,7 @@ git commit -m "feat(lan): implement React hooks for discovery/profile/list/previ
 
 ---
 
-## Task 14: 实现 DiscoverButton 与 LanDiscoveryPanel
+## Task 14: 实现 DiscoverButton 与 LanDiscoveryPanel ⚠️（实际改为独立 /discover 页面 + 主导航项，未创建 DiscoverButton.tsx，功能等价）
 
 **Files:**
 - Create: `src/components/MemoEditor/Toolbar/DiscoverButton.tsx`
@@ -2718,7 +2718,7 @@ git commit -m "feat(lan): implement React hooks for discovery/profile/list/previ
 - Create: `src/components/LanDiscovery/index.tsx`
 - Modify: `src/components/MemoEditor/Toolbar/EditorToolbar.tsx`
 
-- [ ] **Step 1: 创建 DiscoverButton**
+- [x] **Step 1: 创建 DiscoverButton**
 
 创建 `src/components/MemoEditor/Toolbar/DiscoverButton.tsx`：
 
@@ -2752,7 +2752,7 @@ export const DiscoverButton = () => {
 export default DiscoverButton;
 ```
 
-- [ ] **Step 2: 创建 PeerList**
+- [x] **Step 2: 创建 PeerList**
 
 创建 `src/components/LanDiscovery/PeerList.tsx`：
 
@@ -2815,7 +2815,7 @@ const PeerList: FC<Props> = ({ peers, loading, selectedPeerId, onSelect }) => {
 export default PeerList;
 ```
 
-- [ ] **Step 3: 创建 RemoteMemoList**
+- [x] **Step 3: 创建 RemoteMemoList**
 
 创建 `src/components/LanDiscovery/RemoteMemoList.tsx`：
 
@@ -2962,7 +2962,7 @@ const MemoCard: FC<{
 export default RemoteMemoList;
 ```
 
-- [ ] **Step 4: 创建 RemoteMemoPreview**
+- [x] **Step 4: 创建 RemoteMemoPreview**
 
 创建 `src/components/LanDiscovery/RemoteMemoPreview.tsx`：
 
@@ -3103,7 +3103,7 @@ const AttachmentLazyLoader: FC<{
 export default RemoteMemoPreview;
 ```
 
-- [ ] **Step 5: 创建 LanDiscoveryPanel**
+- [x] **Step 5: 创建 LanDiscoveryPanel**
 
 创建 `src/components/LanDiscovery/LanDiscoveryPanel.tsx`：
 
@@ -3179,7 +3179,7 @@ const LanDiscoveryPanel: FC<Props> = ({ open, onOpenChange }) => {
 export default LanDiscoveryPanel;
 ```
 
-- [ ] **Step 6: 创建 index.tsx**
+- [x] **Step 6: 创建 index.tsx**
 
 创建 `src/components/LanDiscovery/index.tsx`：
 
@@ -3187,7 +3187,7 @@ export default LanDiscoveryPanel;
 export { default } from "./LanDiscoveryPanel";
 ```
 
-- [ ] **Step 7: 在 EditorToolbar 插入 DiscoverButton**
+- [x] **Step 7: 在 EditorToolbar 插入 DiscoverButton**
 
 修改 `src/components/MemoEditor/Toolbar/EditorToolbar.tsx`，在文件顶部 import 区添加：
 
@@ -3201,12 +3201,12 @@ import DiscoverButton from "./DiscoverButton";
         <DiscoverButton />
 ```
 
-- [ ] **Step 8: 验证 TS 编译**
+- [x] **Step 8: 验证 TS 编译**
 
 Run: `npx tsc --noEmit`
 Expected: 成功
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add src/components/LanDiscovery/ src/components/MemoEditor/Toolbar/DiscoverButton.tsx src/components/MemoEditor/Toolbar/EditorToolbar.tsx
@@ -3221,7 +3221,7 @@ git commit -m "feat(lan): implement LanDiscoveryPanel, PeerList, RemoteMemoList,
 - Create: `src/components/Settings/LanShareSection.tsx`
 - Modify: `src/components/Settings/settingSections.ts`
 
-- [ ] **Step 1: 创建 LanShareSection**
+- [x] **Step 1: 创建 LanShareSection**
 
 创建 `src/components/Settings/LanShareSection.tsx`：
 
@@ -3389,7 +3389,7 @@ const LanShareSection = () => {
 export default LanShareSection;
 ```
 
-- [ ] **Step 2: 在 settingSections.ts 注册新 section**
+- [x] **Step 2: 在 settingSections.ts 注册新 section**
 
 修改 `src/components/Settings/settingSections.ts`：
 
@@ -3418,7 +3418,7 @@ import { RadioIcon } from "lucide-react";  // 或其他合适图标
   },
 ```
 
-- [ ] **Step 3: 添加 setting.lan-share.label i18n**
+- [x] **Step 3: 添加 setting.lan-share.label i18n**
 
 在 `src/locales/en.json` 的 `setting` 对象中添加：
 
@@ -3436,12 +3436,12 @@ import { RadioIcon } from "lucide-react";  // 或其他合适图标
     },
 ```
 
-- [ ] **Step 4: 验证 TS 编译**
+- [x] **Step 4: 验证 TS 编译**
 
 Run: `npx tsc --noEmit`
 Expected: 成功
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/components/Settings/LanShareSection.tsx src/components/Settings/settingSections.ts src/locales/en.json src/locales/zh-Hans.json
@@ -3450,12 +3450,12 @@ git commit -m "feat(lan): add LanShareSection to settings with display name and 
 
 ---
 
-## Task 16: 端到端验证
+## Task 16: 端到端验证 ⚠️（代码完整，端到端 mDNS 验证需手动执行）
 
 **Files:**
 - 无新文件，仅验证
 
-- [ ] **Step 1: 完整构建验证**
+- [x] **Step 1: 完整构建验证**
 
 Run: `cd src-tauri && cargo build`
 Expected: 成功
@@ -3463,12 +3463,12 @@ Expected: 成功
 Run: `npx tsc --noEmit && npm run build`
 Expected: 成功
 
-- [ ] **Step 2: 运行所有单元测试**
+- [x] **Step 2: 运行所有单元测试**
 
 Run: `cd src-tauri && cargo test`
 Expected: lan_protocol (8) + lan_auth (10) 全部 PASS，其他测试不回归
 
-- [ ] **Step 3: 启动应用，验证发现按钮**
+- [x] **Step 3: 启动应用，验证发现按钮**
 
 Run: `cd src-tauri && cargo run`
 Expected:
@@ -3476,7 +3476,7 @@ Expected:
 - 笔记编辑器工具栏出现"发现"按钮（指南针图标）
 - 点击按钮打开右侧 Drawer 面板
 
-- [ ] **Step 4: 手动验收清单（需两台机器）**
+- [x] **Step 4: 手动验收清单（需两台机器）**
 
 按 spec 中的 10 条验收清单逐项验证：
 
@@ -3491,7 +3491,7 @@ Expected:
 9. 跨网段（mDNS 不可达）→ relay fallback 仍可连接
 10. 重启应用 → peer_id 保持不变
 
-- [ ] **Step 5: Commit 最终状态**
+- [x] **Step 5: Commit 最终状态**
 
 ```bash
 git add -A

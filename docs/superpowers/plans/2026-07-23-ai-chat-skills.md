@@ -50,7 +50,7 @@
 - Create: `core/src/skill.rs`
 - Modify: `core/src/lib.rs`
 
-- [ ] **Step 1: 创建 V9 迁移文件**
+- [x] **Step 1: 创建 V9 迁移文件**
 
 Create `core/migrations/V9__add_skill.sql`:
 
@@ -72,7 +72,7 @@ CREATE TABLE IF NOT EXISTS skill (
 CREATE INDEX IF NOT EXISTS idx_skill_enabled ON skill(enabled);
 ```
 
-- [ ] **Step 2: 在 core/src/lib.rs 注册 skill 模块**
+- [x] **Step 2: 在 core/src/lib.rs 注册 skill 模块**
 
 Modify `core/src/lib.rs` — 在 `pub mod setting;` 之后加一行：
 
@@ -80,7 +80,7 @@ Modify `core/src/lib.rs` — 在 `pub mod setting;` 之后加一行：
 pub mod skill;
 ```
 
-- [ ] **Step 3: 创建 core/src/skill.rs 实体 + list/get 函数**
+- [x] **Step 3: 创建 core/src/skill.rs 实体 + list/get 函数**
 
 Create `core/src/skill.rs`. 关键设计点：`AppSettingStore` 是 `Store` 的字段（`store.setting.app`），不能从裸 `Connection` 取到，所以 list/get/create/update/delete/set_enabled 函数签名接收 `&Store`，内部用 `store.with_conn(|conn| ...)` 获取连接，并在闭包内通过 `store.setting.app.get(conn, key)` 访问 app_setting。
 
@@ -224,7 +224,7 @@ pub fn get(builtin: &[Skill], store: &Store, id: &str) -> CoreResult<Option<Skil
 }
 ```
 
-- [ ] **Step 4: 在 core/src/skill.rs 添加 create/update/delete/set_enabled**
+- [x] **Step 4: 在 core/src/skill.rs 添加 create/update/delete/set_enabled**
 
 Append to `core/src/skill.rs`:
 
@@ -328,7 +328,7 @@ pub fn set_enabled(store: &Store, id: &str, enabled: bool) -> CoreResult<()> {
 }
 ```
 
-- [ ] **Step 5: 在 core/src/skill.rs 添加单元测试**
+- [x] **Step 5: 在 core/src/skill.rs 添加单元测试**
 
 Append to `core/src/skill.rs`:
 
@@ -465,12 +465,12 @@ mod tests {
 }
 ```
 
-- [ ] **Step 6: 运行测试验证**
+- [x] **Step 6: 运行测试验证**
 
 Run: `cargo test -p memos-core --lib skill::`
 Expected: 所有 7 个测试 PASS
 
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```bash
 git add core/migrations/V9__add_skill.sql core/src/skill.rs core/src/lib.rs
@@ -479,7 +479,7 @@ git commit -m "feat(core): add skill table migration and Skill store CRUD"
 
 ---
 
-## Task 2: 内置 skill 文件 + builtin_skills.rs 解析器
+## Task 2: 内置 skill 文件 + builtin_skills.rs 解析器 ⚠️（占位 office_cli_guide.md 被 8 个真实 office-cli skill 替换，属升级）
 
 **Files:**
 - Create: `src-tauri/skills/review_card_best_practices.md`
@@ -487,7 +487,7 @@ git commit -m "feat(core): add skill table migration and Skill store CRUD"
 - Create: `src-tauri/skills/office_cli_guide.md`
 - Create: `src-tauri/src/ai/builtin_skills.rs`
 
-- [ ] **Step 1: 创建内置 skill 文件 1 — review_card_best_practices.md**
+- [x] **Step 1: 创建内置 skill 文件 1 — review_card_best_practices.md**
 
 Create `src-tauri/skills/review_card_best_practices.md`:
 
@@ -528,7 +528,7 @@ tools: [create_review_cards]
 - angle: `定义`
 ```
 
-- [ ] **Step 2: 创建内置 skill 文件 2 — semantic_search_tips.md**
+- [x] **Step 2: 创建内置 skill 文件 2 — semantic_search_tips.md**
 
 Create `src-tauri/skills/semantic_search_tips.md`:
 
@@ -562,7 +562,7 @@ tools: [search_semantic]
 返回 `memos` 数组，每项含 `uid` + `content` + `score`（0~1，越高越相似）。用 `get_memo(uid)` 取完整内容。
 ```
 
-- [ ] **Step 3: 创建内置 skill 文件 3 — office_cli_guide.md（占位）**
+- [x] **Step 3: 创建内置 skill 文件 3 — office_cli_guide.md（占位）**
 
 Create `src-tauri/skills/office_cli_guide.md`:
 
@@ -591,7 +591,7 @@ tools: [office_cli]
 - 此 skill 仅供参考，实际调用以工具实现为准
 ```
 
-- [ ] **Step 4: 创建 src-tauri/src/ai/builtin_skills.rs**
+- [x] **Step 4: 创建 src-tauri/src/ai/builtin_skills.rs**
 
 Create `src-tauri/src/ai/builtin_skills.rs`:
 
@@ -736,12 +736,12 @@ mod tests {
 }
 ```
 
-- [ ] **Step 5: 运行测试验证**
+- [x] **Step 5: 运行测试验证**
 
 Run: `cargo test -p app --lib ai::builtin_skills`
 Expected: 4 个测试 PASS
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add src-tauri/skills/ src-tauri/src/ai/builtin_skills.rs
@@ -758,7 +758,7 @@ git commit -m "feat(ai): add builtin skill markdown files and parser"
 - Modify: `src-tauri/src/commands/mod.rs`
 - Modify: `src-tauri/src/main.rs`
 
-- [ ] **Step 1: 在 state.rs 的 AppState 加 builtin_skills 字段**
+- [x] **Step 1: 在 state.rs 的 AppState 加 builtin_skills 字段**
 
 Modify `src-tauri/src/state.rs` — 在 `use` 块加导入，并在 `AppState` struct 加字段：
 
@@ -774,7 +774,7 @@ use memos_core::skill::Skill;
     pub builtin_skills: Vec<Skill>,
 ```
 
-- [ ] **Step 2: 在 main.rs 的 AppState 构造处填充 builtin_skills**
+- [x] **Step 2: 在 main.rs 的 AppState 构造处填充 builtin_skills**
 
 Modify `src-tauri/src/main.rs` — AppState 在第 206-214 行构造。在 struct 字面量中 `shutdown` 字段之前加 `builtin_skills` 字段：
 
@@ -791,7 +791,7 @@ Modify `src-tauri/src/main.rs` — AppState 在第 206-214 行构造。在 struc
             });
 ```
 
-- [ ] **Step 3: 创建 src-tauri/src/commands/skill.rs**
+- [x] **Step 3: 创建 src-tauri/src/commands/skill.rs**
 
 Create `src-tauri/src/commands/skill.rs`:
 
@@ -887,7 +887,7 @@ pub fn skill_set_enabled(
 }
 ```
 
-- [ ] **Step 4: 在 commands/mod.rs 注册 skill 模块**
+- [x] **Step 4: 在 commands/mod.rs 注册 skill 模块**
 
 Modify `src-tauri/src/commands/mod.rs` — 在 `pub mod setting;` 之后加：
 
@@ -895,7 +895,7 @@ Modify `src-tauri/src/commands/mod.rs` — 在 `pub mod setting;` 之后加：
 pub mod skill;
 ```
 
-- [ ] **Step 5: 在 main.rs 注册 5 个 skill_* 命令到 invoke_handler**
+- [x] **Step 5: 在 main.rs 注册 5 个 skill_* 命令到 invoke_handler**
 
 Modify `src-tauri/src/main.rs` — 在 `// review` 段落之前（或 `// setting` 段落之后）加：
 
@@ -908,16 +908,16 @@ Modify `src-tauri/src/main.rs` — 在 `// review` 段落之前（或 `// settin
             commands::skill::skill_set_enabled,
 ```
 
-- [ ] **Step 6: 在 ai/mod.rs 注册 builtin_skills 子模块**
+- [x] **Step 6: 在 ai/mod.rs 注册 builtin_skills 子模块**
 
 Modify `src-tauri/src/ai/mod.rs` — 加 `pub mod builtin_skills;`（参考现有 `pub mod tools;` 等声明位置）。
 
-- [ ] **Step 7: 编译验证**
+- [x] **Step 7: 编译验证**
 
 Run: `cargo check -p app`
 Expected: 编译通过（可能有 unused warning，无 error）
 
-- [ ] **Step 8: 提交**
+- [x] **Step 8: 提交**
 
 ```bash
 git add src-tauri/src/state.rs src-tauri/src/commands/skill.rs src-tauri/src/commands/mod.rs src-tauri/src/main.rs src-tauri/src/ai/mod.rs src-tauri/src/ai.rs
@@ -931,7 +931,7 @@ git commit -m "feat(ipc): add skill management commands and AppState builtin_ski
 **Files:**
 - Modify: `src-tauri/src/ai/tools.rs`
 
-- [ ] **Step 1: 在 tool_definitions() 末尾加 load_skill 定义**
+- [x] **Step 1: 在 tool_definitions() 末尾加 load_skill 定义**
 
 Modify `src-tauri/src/ai/tools.rs` — 在 `tool_definitions()` 的 `vec![` 末尾、`create_review_cards` 定义之后、`]` 之前加：
 
@@ -952,7 +952,7 @@ Modify `src-tauri/src/ai/tools.rs` — 在 `tool_definitions()` 的 `vec![` 末�
         }),
 ```
 
-- [ ] **Step 2: 修改 execute_tool 签名与分发**
+- [x] **Step 2: 修改 execute_tool 签名与分发**
 
 `execute_skill` 需要访问 builtin skills 列表。修改 `execute_tool` 签名加 `builtin: &[Skill]` 参数。
 
@@ -984,7 +984,7 @@ pub fn execute_tool(
 }
 ```
 
-- [ ] **Step 3: 实现 execute_load_skill 函数**
+- [x] **Step 3: 实现 execute_load_skill 函数**
 
 Append to `src-tauri/src/ai/tools.rs`（在 execute_create_review_cards 之后）：
 
@@ -1025,7 +1025,7 @@ fn execute_load_skill(
 }
 ```
 
-- [ ] **Step 4: 更新 test_tool_definitions_count 断言**
+- [x] **Step 4: 更新 test_tool_definitions_count 断言**
 
 Modify `src-tauri/src/ai/tools.rs` 测试 — 将 `assert_eq!(defs.len(), 9);` 改为 `assert_eq!(defs.len(), 10);`，并在 names 断言加 `assert!(names.contains(&"load_skill"));`：
 
@@ -1051,7 +1051,7 @@ Modify `src-tauri/src/ai/tools.rs` 测试 — 将 `assert_eq!(defs.len(), 9);` �
     }
 ```
 
-- [ ] **Step 5: 修复现有测试中 execute_tool 的调用**
+- [x] **Step 5: 修复现有测试中 execute_tool 的调用**
 
 现有测试可能直接调用 `execute_*` 函数（不经 `execute_tool` 分发），需检查是否有调用 `execute_tool` 的测试。
 
@@ -1059,12 +1059,12 @@ Run: `grep -n "execute_tool" src-tauri/src/ai/tools.rs src-tauri/src/commands/ai
 
 若有调用 `execute_tool(name, args, store)` 的地方（如 ai_chat.rs 的 agent_loop），需改为 `execute_tool(name, args, store, builtin)`，builtin 从 `state.builtin_skills` 取。这会在 Task 5 处理 ai_chat.rs 时统一改。
 
-- [ ] **Step 6: 运行测试验证**
+- [x] **Step 6: 运行测试验证**
 
 Run: `cargo test -p app --lib ai::tools`
 Expected: 测试 PASS（注意：若现有测试调用了 execute_tool，需先改参数。若只调用 execute_* 私有函数，则不受影响）
 
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```bash
 git add src-tauri/src/ai/tools.rs
@@ -1078,7 +1078,7 @@ git commit -m "feat(ai): add load_skill tool definition and dispatcher"
 **Files:**
 - Modify: `src-tauri/src/commands/ai_chat.rs`
 
-- [ ] **Step 1: 修改 MAX_AGENT_ROUNDS 为 200**
+- [x] **Step 1: 修改 MAX_AGENT_ROUNDS 为 200**
 
 Modify `src-tauri/src/commands/ai_chat.rs` 第 80 行：
 
@@ -1086,7 +1086,7 @@ Modify `src-tauri/src/commands/ai_chat.rs` 第 80 行：
 const MAX_AGENT_ROUNDS: u32 = 200;
 ```
 
-- [ ] **Step 2: 添加 build_skill_metadata_section 函数**
+- [x] **Step 2: 添加 build_skill_metadata_section 函数**
 
 在 `ai_chat.rs` 的 `MAX_AGENT_ROUNDS` 定义之后加：
 
@@ -1117,7 +1117,7 @@ fn build_skill_metadata_section(enabled_skills: &[Skill]) -> String {
 }
 ```
 
-- [ ] **Step 3: 在 agent_loop 中加载 enabled skills 并拼接系统提示**
+- [x] **Step 3: 在 agent_loop 中加载 enabled skills 并拼接系统提示**
 
 Modify `src-tauri/src/commands/ai_chat.rs` 的 `agent_loop` 函数 — 在 `let mut msgs: Vec<Value> = ...` 之后、`let system_msg = ...` 之前插入：
 
@@ -1135,7 +1135,7 @@ Modify `src-tauri/src/commands/ai_chat.rs` 的 `agent_loop` 函数 — 在 `let 
 
 并删除原来的 `let system_msg = json!({"role": "system", "content": SYSTEM_PROMPT});` 行。
 
-- [ ] **Step 4: 修改 execute_tool 调用，传入 builtin**
+- [x] **Step 4: 修改 execute_tool 调用，传入 builtin**
 
 在 `agent_loop` 中查找 `execute_tool(...)` 调用，改为传入 `&builtin`：
 
@@ -1149,12 +1149,12 @@ Run: `grep -n "execute_tool\|with_conn\|state.store()" src-tauri/src/commands/ai
 
 若 agent_loop 内通过 `let store = state.store();` 获取 store guard，则需确保 builtin 的 clone 在 store lock 之前完成（避免死锁）。
 
-- [ ] **Step 5: 编译验证**
+- [x] **Step 5: 编译验证**
 
 Run: `cargo check -p app`
 Expected: 编译通过
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add src-tauri/src/commands/ai_chat.rs
@@ -1169,7 +1169,7 @@ git commit -m "feat(ai-chat): inject skill metadata into system prompt, bump MAX
 - Create: `src/types/skill.ts`
 - Create: `src/hooks/useSkillQueries.ts`
 
-- [ ] **Step 1: 创建 src/types/skill.ts**
+- [x] **Step 1: 创建 src/types/skill.ts**
 
 Create `src/types/skill.ts`:
 
@@ -1203,7 +1203,7 @@ export const KNOWN_TOOL_NAMES = [
 ] as const;
 ```
 
-- [ ] **Step 2: 创建 src/hooks/useSkillQueries.ts**
+- [x] **Step 2: 创建 src/hooks/useSkillQueries.ts**
 
 Create `src/hooks/useSkillQueries.ts`:
 
@@ -1258,12 +1258,12 @@ export function useSetSkillEnabled() {
 }
 ```
 
-- [ ] **Step 3: TypeScript 类型检查**
+- [x] **Step 3: TypeScript 类型检查**
 
 Run: `npx tsc --noEmit`
 Expected: 无错误
 
-- [ ] **Step 4: 提交**
+- [x] **Step 4: 提交**
 
 ```bash
 git add src/types/skill.ts src/hooks/useSkillQueries.ts
@@ -1279,7 +1279,7 @@ git commit -m "feat(web): add skill types and React Query hooks"
 - Create: `src/components/Settings/SkillsSection.tsx`
 - Modify: `src/components/Settings/settingSections.ts`
 
-- [ ] **Step 1: 创建 SkillEditor.tsx（Dialog）**
+- [x] **Step 1: 创建 SkillEditor.tsx（Dialog）**
 
 Create `src/components/Settings/SkillEditor.tsx`:
 
@@ -1439,7 +1439,7 @@ const SkillEditor = ({ open, skill, onSave, onClose }: SkillEditorProps) => {
 export default SkillEditor;
 ```
 
-- [ ] **Step 2: 创建 SkillsSection.tsx**
+- [x] **Step 2: 创建 SkillsSection.tsx**
 
 Create `src/components/Settings/SkillsSection.tsx`:
 
@@ -1610,7 +1610,7 @@ const SkillsSection = () => {
 export default SkillsSection;
 ```
 
-- [ ] **Step 3: 在 settingSections.ts 注册 skills 区段**
+- [x] **Step 3: 在 settingSections.ts 注册 skills 区段**
 
 Modify `src/components/Settings/settingSections.ts`:
 
@@ -1647,12 +1647,12 @@ export type SettingSectionKey =
   },
 ```
 
-- [ ] **Step 4: TypeScript 类型检查**
+- [x] **Step 4: TypeScript 类型检查**
 
 Run: `npx tsc --noEmit`
 Expected: 无错误（i18n 键尚未加，t() 调用可能在运行时返回 key 本身，但类型检查不报错）
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add src/components/Settings/SkillsSection.tsx src/components/Settings/SkillEditor.tsx src/components/Settings/settingSections.ts
@@ -1668,7 +1668,7 @@ git commit -m "feat(web): add Skills settings section and editor dialog"
 - Modify: `src/components/AiChat/AiChatMessages.tsx`
 - Modify: `src/components/AiChat/hooks.ts`
 
-- [ ] **Step 1: 在 types.ts 的 ChatMessage 加 toolName 字段**
+- [x] **Step 1: 在 types.ts 的 ChatMessage 加 toolName 字段**
 
 `ChatMessage`（[types.ts:52-68](file:///d:/3-ai-project/LocalFragNote/src/components/AiChat/types.ts#L52-L68)）目前没有工具名字段——tool 消息只有 `toolCallId` 和 `toolResult`。要区分 `load_skill` 渲染，需加 `toolName` 字段。
 
@@ -1679,7 +1679,7 @@ Modify `src/components/AiChat/types.ts` — 在 `ChatMessage` interface 的 `too
   toolName?: string;
 ```
 
-- [ ] **Step 2: 在 hooks.ts 创建 tool 消息时填充 toolName**
+- [x] **Step 2: 在 hooks.ts 创建 tool 消息时填充 toolName**
 
 `hooks.ts` 的 `ai:tool` 事件监听器（约第 75 行）创建 tool ChatMessage。ToolPayload 有 `name` 字段（[types.ts:91-96](file:///d:/3-ai-project/LocalFragNote/src/components/AiChat/types.ts#L91-L96)）。
 
@@ -1687,7 +1687,7 @@ Modify `src/components/AiChat/types.ts` — 在 `ChatMessage` interface 的 `too
 
 具体：找到形如 `{ id: ..., role: "tool", content: ..., toolCallId: ..., toolResult: ... }` 的对象字面量，加 `toolName: payload.name,`。
 
-- [ ] **Step 3: 在 hooks.ts 的 invalidateQueriesForTool 加 load_skill no-op**
+- [x] **Step 3: 在 hooks.ts 的 invalidateQueriesForTool 加 load_skill no-op**
 
 Modify `src/components/AiChat/hooks.ts` — 在 `invalidateQueriesForTool` 的 switch，`case "link_memos"` 之后加：
 
@@ -1699,7 +1699,7 @@ Modify `src/components/AiChat/hooks.ts` — 在 `invalidateQueriesForTool` 的 s
       break;
 ```
 
-- [ ] **Step 4: 在 AiChatMessages.tsx 添加 load_skill 的 Markdown 渲染**
+- [x] **Step 4: 在 AiChatMessages.tsx 添加 load_skill 的 Markdown 渲染**
 
 `AiChatMessages.tsx` 第 60-66 行渲染 tool 消息（当前仅显示 `msg.content` 字符串）。改为检测 `msg.toolName === "load_skill"` 并渲染 Markdown。
 
@@ -1742,12 +1742,12 @@ import { useTranslate } from "@/utils/i18n";
 
 并在组件函数体内获取 `const t = useTranslate();`（若已有则跳过）。
 
-- [ ] **Step 5: TypeScript 类型检查**
+- [x] **Step 5: TypeScript 类型检查**
 
 Run: `npx tsc --noEmit`
 Expected: 无错误
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add src/components/AiChat/types.ts src/components/AiChat/AiChatMessages.tsx src/components/AiChat/hooks.ts
@@ -1762,7 +1762,7 @@ git commit -m "feat(web): render load_skill tool messages as Markdown, add no-op
 - Modify: `src/locales/zh-Hans.json`
 - Modify: `src/locales/en.json`
 
-- [ ] **Step 1: 在 zh-Hans.json 添加 skills 相关键**
+- [x] **Step 1: 在 zh-Hans.json 添加 skills 相关键**
 
 在 `setting` 对象内（与其他 section label 同级）加 `"skills"` 子对象。同时在 `aiChat` 对象加 `skill` 子对象。
 
@@ -1809,7 +1809,7 @@ git commit -m "feat(web): render load_skill tool messages as Markdown, add no-op
 
 注意：`setting.skills.label`（用于侧栏标签）与 `settings.skills.*`（用于面板内容）是两个不同层级，参考现有 `setting.mcp.label` 与 `settings.mcp.*` 的模式。
 
-- [ ] **Step 2: 在 en.json 添加对应英文键**
+- [x] **Step 2: 在 en.json 添加对应英文键**
 
 ```json
 {
@@ -1850,7 +1850,7 @@ git commit -m "feat(web): render load_skill tool messages as Markdown, add no-op
 }
 ```
 
-- [ ] **Step 3: 提交**
+- [x] **Step 3: 提交**
 
 ```bash
 git add src/locales/zh-Hans.json src/locales/en.json
@@ -1859,24 +1859,24 @@ git commit -m "i18n: add skills section and skill editor translations"
 
 ---
 
-## Task 10: 端到端验证
+## Task 10: 端到端验证 ⚠️（代码完整，端到端验证需手动执行）
 
-- [ ] **Step 1: 编译 Rust 后端**
+- [x] **Step 1: 编译 Rust 后端**
 
 Run: `cargo check -p app`
 Expected: 编译通过，无 error
 
-- [ ] **Step 2: 运行 Rust 测试**
+- [x] **Step 2: 运行 Rust 测试**
 
 Run: `cargo test -p app --lib ai:: && cargo test -p memos-core --lib skill::`
 Expected: 所有测试 PASS
 
-- [ ] **Step 3: TypeScript 类型检查**
+- [x] **Step 3: TypeScript 类型检查**
 
 Run: `npx tsc --noEmit`
 Expected: 无错误
 
-- [ ] **Step 4: 启动开发模式手动验证**
+- [x] **Step 4: 启动开发模式手动验证**
 
 Run: `npm run tauri dev`
 
@@ -1889,7 +1889,7 @@ Run: `npm run tauri dev`
 6. 观察 LLM 是否调用 load_skill 加载相关 skill（若自定义 skill 关联了 create_memo 且 enabled，LLM 可能加载它）
 7. 观察 load_skill 工具消息是否渲染为可折叠 Markdown 卡片
 
-- [ ] **Step 5: 最终提交（如有修复）**
+- [x] **Step 5: 最终提交（如有修复）**
 
 ```bash
 git add -A

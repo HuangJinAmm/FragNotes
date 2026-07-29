@@ -31,7 +31,7 @@
 - Create: `core/src/tag.rs`
 - Modify: `core/src/lib.rs:6` (after `pub mod store;` line, add `pub mod tag;`)
 
-- [ ] **Step 1: 创建 V6 迁移文件**
+- [x] **Step 1: 创建 V6 迁移文件**
 
 ```sql
 -- core/migrations/V6__add_tag_metadata.sql
@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS tag (
 CREATE INDEX IF NOT EXISTS idx_tag_count ON tag(count DESC);
 ```
 
-- [ ] **Step 2: 创建 `core/src/tag.rs`（全部函数）**
+- [x] **Step 2: 创建 `core/src/tag.rs`（全部函数）**
 
 ```rust
 //! 标签元数据表 CRUD：维护 tag 名称与使用次数的索引。
@@ -155,7 +155,7 @@ pub fn list_tags(conn: &Connection) -> CoreResult<Vec<(String, i32)>> {
 }
 ```
 
-- [ ] **Step 3: 注册模块**
+- [x] **Step 3: 注册模块**
 
 在 `core/src/lib.rs` 的模块列表中（`pub mod store;` 之后）添加：
 
@@ -163,12 +163,12 @@ pub fn list_tags(conn: &Connection) -> CoreResult<Vec<(String, i32)>> {
 pub mod tag;
 ```
 
-- [ ] **Step 4: 验证编译**
+- [x] **Step 4: 验证编译**
 
 Run: `cargo build -p memos-core`
 Expected: 编译通过，无错误
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add core/migrations/V6__add_tag_metadata.sql core/src/tag.rs core/src/lib.rs
@@ -183,7 +183,7 @@ git commit -m "feat(core): add tag metadata table V6 migration and tag module"
 - Modify: `core/src/memo.rs:95-128` (create 函数)
 - Test: `core/tests/crud.rs` (新增测试)
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 在 `core/tests/crud.rs` 末尾添加：
 
@@ -232,12 +232,12 @@ fn tag_table_empty_when_no_tags() {
 
 在 `core/tests/crud.rs` 顶部 `use` 区域确认有 `use memos_core::tag;`（如果没有则添加）。
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `cargo test -p memos-core --test crud tag_table_syncs_on_create`
 Expected: FAIL（create 后 tag 表为空，因为还没同步逻辑）
 
-- [ ] **Step 3: 修改 `memo::create` 同步 tag**
+- [x] **Step 3: 修改 `memo::create` 同步 tag**
 
 在 `core/src/memo.rs` 的 `create` 函数中，在 `get(conn, ...)` 返回前插入 tag 同步调用。在文件顶部添加 `use crate::tag;` 到 import 区。
 
@@ -256,12 +256,12 @@ Expected: FAIL（create 后 tag 表为空，因为还没同步逻辑）
 use crate::tag;
 ```
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 Run: `cargo test -p memos-core --test crud tag_table`
 Expected: 2 个测试 PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add core/src/memo.rs core/tests/crud.rs
@@ -276,7 +276,7 @@ git commit -m "feat(core): sync tag table on memo create"
 - Modify: `core/src/memo.rs:358-411` (update 函数)
 - Test: `core/tests/crud.rs`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 在 `core/tests/crud.rs` 末尾添加：
 
@@ -378,12 +378,12 @@ fn tag_table_no_sync_when_content_unchanged() {
 }
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `cargo test -p memos-core --test crud tag_table_syncs_on_update_content`
 Expected: FAIL（update 后 go count 仍为 0，因为还没同步逻辑）
 
-- [ ] **Step 3: 修改 `memo::update` 同步 tag**
+- [x] **Step 3: 修改 `memo::update` 同步 tag**
 
 在 `core/src/memo.rs` 的 `update` 函数中，需要：
 1. 在更新前读取旧 content（如果 content 字段在 update mask 中）
@@ -507,12 +507,12 @@ pub fn update(conn: &Connection, update: &UpdateMemo) -> CoreResult<Memo> {
 }
 ```
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 Run: `cargo test -p memos-core --test crud tag_table`
 Expected: 全部 tag_table 测试 PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add core/src/memo.rs core/tests/crud.rs
@@ -527,7 +527,7 @@ git commit -m "feat(core): sync tag table on memo update (content + row_status)"
 - Modify: `core/src/memo.rs:414-442` (delete 函数)
 - Test: `core/tests/crud.rs`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 在 `core/tests/crud.rs` 末尾添加：
 
@@ -558,7 +558,7 @@ fn tag_table_decrements_on_delete() {
 }
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `cargo test -p memos-core --test crud tag_table_decrements_on_delete`
 Expected: FAIL（删除后 tag 表仍有记录）
@@ -587,7 +587,7 @@ fn tag_table_decrements_on_delete() {
 }
 ```
 
-- [ ] **Step 3: 修改 `memo::delete` 同步 tag**
+- [x] **Step 3: 修改 `memo::delete` 同步 tag**
 
 在 `core/src/memo.rs` 的 `delete` 函数中，在 `DELETE FROM memo` 之前读取 content 并递减 tag。
 
@@ -634,12 +634,12 @@ pub fn delete(conn: &mut Connection, id: i32) -> CoreResult<()> {
 }
 ```
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 Run: `cargo test -p memos-core --test crud tag_table_decrements_on_delete`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add core/src/memo.rs core/tests/crud.rs
@@ -655,7 +655,7 @@ git commit -m "feat(core): sync tag table on memo delete"
 - Modify: `src-tauri/src/commands/memo.rs:314-415` (suggest_tags 函数中 system_tags 查询)
 - Modify: `src-tauri/src/ai/tools.rs:188-210` (execute_list_tags 函数)
 
-- [ ] **Step 1: 修改 `commands::memo::list_tags`**
+- [x] **Step 1: 修改 `commands::memo::list_tags`**
 
 将 `src-tauri/src/commands/memo.rs` 第 246-270 行的 `list_tags` 函数替换为：
 
@@ -673,7 +673,7 @@ pub fn list_tags(state: tauri::State<'_, AppState>) -> IpcResult<Vec<TagWithCoun
 
 在 `src-tauri/src/commands/memo.rs` 顶部确认有 `use memos_core::tag;`（若没有可使用全路径 `memos_core::tag::list_tags`）。
 
-- [ ] **Step 2: 修改 `commands::memo::suggest_tags` 中的 system_tags 查询**
+- [x] **Step 2: 修改 `commands::memo::suggest_tags` 中的 system_tags 查询**
 
 在 `suggest_tags` 函数中（第 331-349 行附近），将全表扫描提取 system_tags 的代码块替换为：
 
@@ -687,7 +687,7 @@ pub fn list_tags(state: tauri::State<'_, AppState>) -> IpcResult<Vec<TagWithCoun
     })?;
 ```
 
-- [ ] **Step 3: 修改 `ai::tools::execute_list_tags`**
+- [x] **Step 3: 修改 `ai::tools::execute_list_tags`**
 
 将 `src-tauri/src/ai/tools.rs` 第 188-210 行的 `execute_list_tags` 函数替换为：
 
@@ -702,17 +702,17 @@ fn execute_list_tags(store: &Store) -> memos_core::CoreResult<Value> {
 }
 ```
 
-- [ ] **Step 4: 验证编译**
+- [x] **Step 4: 验证编译**
 
 Run: `cargo check -p memos-app`
 Expected: 编译通过
 
-- [ ] **Step 5: 运行全部测试**
+- [x] **Step 5: 运行全部测试**
 
 Run: `cargo test -p memos-core --test crud`
 Expected: 所有测试 PASS（包括原有测试和新增的 tag_table 测试）
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src-tauri/src/commands/memo.rs src-tauri/src/ai/tools.rs
@@ -726,7 +726,7 @@ git commit -m "refactor: list_tags and suggest_tags read from tag table instead 
 **Files:**
 - Test: `core/tests/crud.rs`
 
-- [ ] **Step 1: 写归档/恢复测试**
+- [x] **Step 1: 写归档/恢复测试**
 
 在 `core/tests/crud.rs` 末尾添加：
 
@@ -827,22 +827,22 @@ fn tag_table_list_ordered_by_count() {
 }
 ```
 
-- [ ] **Step 2: 运行测试确认通过**
+- [x] **Step 2: 运行测试确认通过**
 
 Run: `cargo test -p memos-core --test crud`
 Expected: 所有测试 PASS
 
-- [ ] **Step 3: 前端类型检查**
+- [x] **Step 3: 前端类型检查**
 
 Run: `npx tsc --noEmit`
 Expected: 无新增错误（预先存在的 markdown.ts 错误可忽略）
 
-- [ ] **Step 4: 后端最终编译检查**
+- [x] **Step 4: 后端最终编译检查**
 
 Run: `cargo check -p memos-app`
 Expected: 编译通过
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add core/tests/crud.rs
