@@ -2,11 +2,12 @@ name: Release
 
 on:
   push:
-    branches:
-      - main
     tags:
       - 'v*'
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -14,15 +15,38 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Extract version from tag
+        id: version
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            RAW="${GITHUB_REF_NAME#v}"
+          else
+            RAW="0.0.0"
+          fi
+          # MSI 要求版本号为 X.Y.Z 或 X.Y.Z.N（N 为纯数字 ≤65535）
+          # 移除非数字预发布后缀（如 -beta.1），仅保留 X.Y.Z
+          VERSION=$(echo "${RAW}" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')
+          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Update version in tauri.conf.json
+        shell: bash
+        run: |
+          jq '.version = "${{ steps.version.outputs.VERSION }}"' src-tauri/tauri.conf.json > tmp.json && mv tmp.json src-tauri/tauri.conf.json
+
+      - name: Update version in Cargo.toml
+        shell: bash
+        run: |
+          sed -i 's/^version = .*/version = "${{ steps.version.outputs.VERSION }}"/' Cargo.toml
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 11.17.0
           run_install: false
 
       - name: Get pnpm store directory
