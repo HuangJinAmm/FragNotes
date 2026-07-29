@@ -59,7 +59,7 @@
 **Files:**
 - Create: `core/migrations/V10__add_tool.sql`
 
-- [ ] **Step 1: 写 migration SQL**
+- [x] **Step 1: 写 migration SQL**
 
 ```sql
 -- Tools：用户可配置的 shell 命令工具
@@ -79,12 +79,12 @@ CREATE TABLE IF NOT EXISTS tool (
 CREATE INDEX IF NOT EXISTS idx_tool_enabled ON tool(enabled);
 ```
 
-- [ ] **Step 2: 验证 migration 被 refinery 识别**
+- [x] **Step 2: 验证 migration 被 refinery 识别**
 
 Run: `cd d:/3-ai-project/LocalFragNote && cargo test -p memos-core --lib migration::tests -- --nocapture`
 Expected: 现有 migration 测试通过，无新失败（V10 会在测试 setup 时自动应用）
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add core/migrations/V10__add_tool.sql
@@ -99,7 +99,7 @@ git commit -m "feat(tool): add tool table migration V10"
 - Create: `core/src/tool.rs`
 - Modify: `core/src/lib.rs:17`（增加 `pub mod tool;`）
 
-- [ ] **Step 1: 在 lib.rs 注册模块**
+- [x] **Step 1: 在 lib.rs 注册模块**
 
 修改 `core/src/lib.rs`，在 `pub mod skill;`（第 17 行）后追加：
 
@@ -107,7 +107,7 @@ git commit -m "feat(tool): add tool table migration V10"
 pub mod tool;
 ```
 
-- [ ] **Step 2: 写失败测试**
+- [x] **Step 2: 写失败测试**
 
 在 `core/src/tool.rs` 顶部写入：
 
@@ -534,12 +534,12 @@ mod tests {
 }
 ```
 
-- [ ] **Step 3: 运行测试验证失败**
+- [x] **Step 3: 运行测试验证失败**
 
 Run: `cd d:/3-ai-project/LocalFragNote && cargo test -p memos-core --lib tool::tests`
 Expected: PASS（因为是新文件，测试和实现同时落地；如果编译错误先修编译错误）
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add core/src/tool.rs core/src/lib.rs
@@ -554,7 +554,7 @@ git commit -m "feat(tool): add core tool module with CRUD"
 - Create: `src-tauri/src/ai/pending_confirmations.rs`
 - Modify: `src-tauri/src/ai/mod.rs`（增加 `pub mod pending_confirmations;`）
 
-- [ ] **Step 1: 在 ai/mod.rs 注册模块**
+- [x] **Step 1: 在 ai/mod.rs 注册模块**
 
 先读 `src-tauri/src/ai/mod.rs` 看现有结构：
 
@@ -566,7 +566,7 @@ Run: `cat src-tauri/src/ai/mod.rs`（用 Read 工具）
 pub mod pending_confirmations;
 ```
 
-- [ ] **Step 2: 写 PendingConfirmations**
+- [x] **Step 2: 写 PendingConfirmations**
 
 创建 `src-tauri/src/ai/pending_confirmations.rs`：
 
@@ -728,12 +728,12 @@ mod tests {
 
 注意：测试中无法直接测试 `request_confirmation`（需要 AppHandle），只测 `respond`/`cancel_all` 的 oneshot 逻辑。
 
-- [ ] **Step 3: 运行测试**
+- [x] **Step 3: 运行测试**
 
 Run: `cd d:/3-ai-project/LocalFragNote && cargo test -p memos-app --lib ai::pending_confirmations::tests`
 Expected: 3 个测试 PASS
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src-tauri/src/ai/pending_confirmations.rs src-tauri/src/ai/mod.rs
@@ -748,7 +748,7 @@ git commit -m "feat(tool): add PendingConfirmations type for user tool approval"
 - Modify: `src-tauri/src/state.rs`
 - Modify: `src-tauri/src/main.rs:205-214`（AppState 初始化）
 
-- [ ] **Step 1: 修改 state.rs**
+- [x] **Step 1: 修改 state.rs**
 
 在 `src-tauri/src/state.rs` 的 `use` 区追加：
 
@@ -774,7 +774,7 @@ use crate::ai::pending_confirmations::PendingConfirmations;
     }
 ```
 
-- [ ] **Step 2: 修改 main.rs 初始化**
+- [x] **Step 2: 修改 main.rs 初始化**
 
 在 `src-tauri/src/main.rs` 第 205-214 行的 `app.manage(AppState { ... })` 中，在 `cleanup_started: ...` 后追加两个字段：
 
@@ -795,12 +795,12 @@ use crate::ai::pending_confirmations::PendingConfirmations;
 
 注意：`app.handle()` 在 setup 闭包内可用（tauri::Manager trait 已在文件顶部 import）。如果 `app` 不是 `&App` 而是 `AppHandle`，则直接 `app.clone()`。先 Read main.rs 确认 `setup` 闭包参数类型。
 
-- [ ] **Step 3: 编译验证**
+- [x] **Step 3: 编译验证**
 
 Run: `cd d:/3-ai-project/LocalFragNote && cargo build -p memos-app 2>&1 | tail -30`
 Expected: 编译成功，可能有 unused warning（后续任务会用到）
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src-tauri/src/state.rs src-tauri/src/main.rs
@@ -815,7 +815,7 @@ git commit -m "feat(tool): add pending_confirmations and app_handle to AppState"
 - Modify: `src-tauri/src/ai/tools.rs:13-172`（tool_definitions 签名和扩展）
 - Modify: `src-tauri/src/ai/tools.rs:632-650`（测试）
 
-- [ ] **Step 1: 修改 tool_definitions 签名和实现**
+- [x] **Step 1: 修改 tool_definitions 签名和实现**
 
 在 `src-tauri/src/ai/tools.rs` 顶部 `use` 区追加：
 
@@ -880,7 +880,7 @@ pub fn tool_definitions(user_tools: &[Tool]) -> Vec<Value> {
 
 注意：内置 10 个工具的 JSON 内容**保持原样不动**，只改外层结构。
 
-- [ ] **Step 2: 修改测试**
+- [x] **Step 2: 修改测试**
 
 把 `src-tauri/src/ai/tools.rs:632-650` 的 `test_tool_definitions_count` 改为：
 
@@ -936,14 +936,14 @@ pub fn tool_definitions(user_tools: &[Tool]) -> Vec<Value> {
     }
 ```
 
-- [ ] **Step 3: 运行测试**
+- [x] **Step 3: 运行测试**
 
 Run: `cd d:/3-ai-project/LocalFragNote && cargo test -p memos-app --lib ai::tools::tests::test_tool_definitions`
 Expected: 两个测试都 PASS
 
 注意：此时 `ai_chat.rs` 还在调用 `tool_definitions()` 无参版本，编译会失败。下一个任务会修复。本步先确认 tools.rs 测试通过即可（`cargo test` 会因为 ai_chat.rs 编译失败而失败，可以先 `cargo build -p memos-app --lib` 看具体错误，下一步会修）。
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src-tauri/src/ai/tools.rs
@@ -957,7 +957,7 @@ git commit -m "feat(tool): change tool_definitions to accept user_tools paramete
 **Files:**
 - Modify: `src-tauri/src/ai/tools.rs`（增加 execute_user_tool + execute_tool 分发 + 截断 helper）
 
-- [ ] **Step 1: 增加 use 引用**
+- [x] **Step 1: 增加 use 引用**
 
 在 `src-tauri/src/ai/tools.rs` 顶部 use 区追加：
 
@@ -972,7 +972,7 @@ use tauri::async_runtime;
 
 注意：因为 `memos_core::tool::Tool` 和 `skill::Skill` 都叫 Tool，需要 alias。但 `skill::Skill` 已经在 use 区，`tool::Tool` 引入后用全名 `memos_core::tool::Tool`，避免与 `Skill` 冲突。
 
-- [ ] **Step 2: 改 execute_tool 签名和分发**
+- [x] **Step 2: 改 execute_tool 签名和分发**
 
 把 `execute_tool`（第 175-194 行）改为：
 
@@ -1018,7 +1018,7 @@ pub fn execute_tool(
 }
 ```
 
-- [ ] **Step 3: 实现 execute_user_tool**
+- [x] **Step 3: 实现 execute_user_tool**
 
 在 `tools.rs` 末尾（`#\[cfg(test)]` 之前）追加：
 
@@ -1238,7 +1238,7 @@ fn execute_user_tool(
 
 注意 `async_runtime::block_on` 返回 `memos_core::CoreResult<Value>`，因为闭包返回 `Result<Value, CoreError>`。如果签名不匹配，调整闭包返回类型。
 
-- [ ] **Step 4: 修复调用点 ai_chat.rs（暂时占位）**
+- [x] **Step 4: 修复调用点 ai_chat.rs（暂时占位）**
 
 `src-tauri/src/commands/ai_chat.rs:272-275`：
 
@@ -1260,17 +1260,17 @@ fn execute_user_tool(
             };
 ```
 
-- [ ] **Step 5: 编译验证**
+- [x] **Step 5: 编译验证**
 
 Run: `cd d:/3-ai-project/LocalFragNote && cargo build -p memos-app 2>&1 | tail -30`
 Expected: 编译通过（可能有 unused warning）
 
-- [ ] **Step 6: 运行现有测试确保无回归**
+- [x] **Step 6: 运行现有测试确保无回归**
 
 Run: `cd d:/3-ai-project/LocalFragNote && cargo test -p memos-app --lib ai::tools::tests`
 Expected: 全部 PASS
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src-tauri/src/ai/tools.rs src-tauri/src/commands/ai_chat.rs
@@ -1284,7 +1284,7 @@ git commit -m "feat(tool): implement execute_user_tool with timeout and truncati
 **Files:**
 - Modify: `src-tauri/src/commands/ai_chat.rs`
 
-- [ ] **Step 1: 加载 enabled 用户工具**
+- [x] **Step 1: 加载 enabled 用户工具**
 
 在 `src-tauri/src/commands/ai_chat.rs` 的 `agent_loop` 中，找到第 160-164 行的 skill_section 加载块：
 
@@ -1305,7 +1305,7 @@ git commit -m "feat(tool): implement execute_user_tool with timeout and truncati
     };
 ```
 
-- [ ] **Step 2: 传 user_tools 给 tool_definitions**
+- [x] **Step 2: 传 user_tools 给 tool_definitions**
 
 把第 183 行：
 
@@ -1319,7 +1319,7 @@ git commit -m "feat(tool): implement execute_user_tool with timeout and truncati
             "tools": tool_definitions(&user_tools),
 ```
 
-- [ ] **Step 3: abort 时 cancel_all**
+- [x] **Step 3: abort 时 cancel_all**
 
 在 `agent_loop` 中找到所有 `cleanup_abort(run_id); return;` 的位置（第 171-173、231-234、266-269 行）。在每处 `return;` 前追加 cancel_all 调用。
 
@@ -1345,7 +1345,7 @@ git commit -m "feat(tool): implement execute_user_tool with timeout and truncati
 
 放在 `let state = app.state::<AppState>();` 之后。当 agent_loop 因任何原因 return 时，guard drop 会触发 cancel_all。已结束的确认会被 drain 清空，无副作用。
 
-- [ ] **Step 4: 扩展 ai:tool 事件 payload**
+- [x] **Step 4: 扩展 ai:tool 事件 payload**
 
 在 `src-tauri/src/commands/ai_chat.rs:78-85` 的 `ToolPayload` struct 改为：
 
@@ -1393,12 +1393,12 @@ struct ToolPayload {
             });
 ```
 
-- [ ] **Step 5: 编译验证**
+- [x] **Step 5: 编译验证**
 
 Run: `cd d:/3-ai-project/LocalFragNote && cargo build -p memos-app 2>&1 | tail -30`
 Expected: 编译通过
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src-tauri/src/commands/ai_chat.rs
@@ -1414,7 +1414,7 @@ git commit -m "feat(tool): integrate user_tools into agent_loop with cancel guar
 - Modify: `src-tauri/src/commands/mod.rs`（增加 `pub mod tool;`）
 - Modify: `src-tauri/src/main.rs:331-336`（注册命令）
 
-- [ ] **Step 1: 检查 commands/mod.rs 结构**
+- [x] **Step 1: 检查 commands/mod.rs 结构**
 
 Run: 用 Read 工具读 `src-tauri/src/commands/mod.rs`
 
@@ -1424,7 +1424,7 @@ Run: 用 Read 工具读 `src-tauri/src/commands/mod.rs`
 pub mod tool;
 ```
 
-- [ ] **Step 2: 写 commands/tool.rs**
+- [x] **Step 2: 写 commands/tool.rs**
 
 ```rust
 //! Tool 管理 IPC 命令
@@ -1516,7 +1516,7 @@ pub fn tool_confirm_response(
 
 注意 `Tool` struct 通过 `Deserialize` 反序列化前端传入的参数。`Tool` 的所有字段必须都有默认值或前端传入。检查 `core/src/tool.rs` 中 `Tool` 的 `created_ts`/`updated_ts` 是否有 `#[serde(default)]`（已有）。
 
-- [ ] **Step 3: 在 main.rs 注册命令**
+- [x] **Step 3: 在 main.rs 注册命令**
 
 在 `src-tauri/src/main.rs:331-336` 的 skills 块后追加：
 
@@ -1530,12 +1530,12 @@ pub fn tool_confirm_response(
             commands::tool::tool_confirm_response,
 ```
 
-- [ ] **Step 4: 编译验证**
+- [x] **Step 4: 编译验证**
 
 Run: `cd d:/3-ai-project/LocalFragNote && cargo build -p memos-app 2>&1 | tail -30`
 Expected: 编译通过
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src-tauri/src/commands/tool.rs src-tauri/src/commands/mod.rs src-tauri/src/main.rs
@@ -1551,7 +1551,7 @@ git commit -m "feat(tool): add tool IPC commands"
 - Create: `src/hooks/useToolQueries.ts`
 - Modify: `src/types/skill.ts`（移除 KNOWN_TOOL_NAMES）
 
-- [ ] **Step 1: 创建 src/types/tool.ts**
+- [x] **Step 1: 创建 src/types/tool.ts**
 
 ```typescript
 export type ToolPermission = "read_only" | "writable" | "executable" | "dangerous";
@@ -1606,7 +1606,7 @@ export interface ToolConfirmRequest {
 }
 ```
 
-- [ ] **Step 2: 创建 src/hooks/useToolQueries.ts**
+- [x] **Step 2: 创建 src/hooks/useToolQueries.ts**
 
 ```typescript
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -1734,7 +1734,7 @@ export function useKnownToolNames() {
 }
 ```
 
-- [ ] **Step 3: 从 src/types/skill.ts 移除 KNOWN_TOOL_NAMES**
+- [x] **Step 3: 从 src/types/skill.ts 移除 KNOWN_TOOL_NAMES**
 
 修改 `src/types/skill.ts`：删除第 15-27 行的 `KNOWN_TOOL_NAMES` 常量及其注释。最终文件应该是：
 
@@ -1754,12 +1754,12 @@ export interface SkillDto {
 }
 ```
 
-- [ ] **Step 4: TypeScript 编译验证**
+- [x] **Step 4: TypeScript 编译验证**
 
 Run: `cd d:/3-ai-project/LocalFragNote && npx tsc --noEmit 2>&1 | head -30`
 Expected: 报错 SkillEditor.tsx 引用 KNOWN_TOOL_NAMES（下个任务会修），其他无错
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/types/tool.ts src/hooks/useToolQueries.ts src/types/skill.ts
@@ -1773,7 +1773,7 @@ git commit -m "feat(tool): add frontend types and hooks"
 **Files:**
 - Modify: `src/components/Settings/SkillEditor.tsx`
 
-- [ ] **Step 1: 修改 import**
+- [x] **Step 1: 修改 import**
 
 把 `src/components/Settings/SkillEditor.tsx:16`：
 
@@ -1788,7 +1788,7 @@ import type { SkillDto } from "@/types/skill";
 import { useKnownToolNames } from "@/hooks/useToolQueries";
 ```
 
-- [ ] **Step 2: 在组件内调用 hook**
+- [x] **Step 2: 在组件内调用 hook**
 
 在 `src/components/Settings/SkillEditor.tsx:38-43`：
 
@@ -1811,7 +1811,7 @@ const SkillEditor = ({ open, skill, onSave, onClose }: SkillEditorProps) => {
   const knownToolNames = useKnownToolNames();
 ```
 
-- [ ] **Step 3: 在多选渲染处替换常量**
+- [x] **Step 3: 在多选渲染处替换常量**
 
 把 `src/components/Settings/SkillEditor.tsx:121`：
 
@@ -1825,12 +1825,12 @@ const SkillEditor = ({ open, skill, onSave, onClose }: SkillEditorProps) => {
               {knownToolNames.map((tool) => (
 ```
 
-- [ ] **Step 4: TypeScript 编译验证**
+- [x] **Step 4: TypeScript 编译验证**
 
 Run: `cd d:/3-ai-project/LocalFragNote && npx tsc --noEmit 2>&1 | head -30`
 Expected: 无 KNOWN_TOOL_NAMES 相关错误
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/components/Settings/SkillEditor.tsx
@@ -1846,7 +1846,7 @@ git commit -m "refactor(skill): use dynamic useKnownToolNames hook in SkillEdito
 - Create: `src/components/Settings/ToolEditor.tsx`
 - Modify: `src/components/Settings/settingSections.ts`
 
-- [ ] **Step 1: 创建 ToolEditor.tsx**
+- [x] **Step 1: 创建 ToolEditor.tsx**
 
 ```typescript
 import { useEffect, useState } from "react";
@@ -2044,7 +2044,7 @@ const ToolEditor = ({ open, tool, onSave, onClose }: ToolEditorProps) => {
 export default ToolEditor;
 ```
 
-- [ ] **Step 2: 创建 ToolsSection.tsx**
+- [x] **Step 2: 创建 ToolsSection.tsx**
 
 ```typescript
 import { useState } from "react";
@@ -2179,7 +2179,7 @@ const ToolsSection = () => {
 export default ToolsSection;
 ```
 
-- [ ] **Step 3: 在 settingSections.ts 注册**
+- [x] **Step 3: 在 settingSections.ts 注册**
 
 修改 `src/components/Settings/settingSections.ts`：
 
@@ -2225,12 +2225,12 @@ export type SettingSectionKey =
   },
 ```
 
-- [ ] **Step 4: TypeScript 编译验证**
+- [x] **Step 4: TypeScript 编译验证**
 
 Run: `cd d:/3-ai-project/LocalFragNote && npx tsc --noEmit 2>&1 | head -30`
 Expected: 无报错（翻译键在下一个任务补）
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/components/Settings/ToolsSection.tsx src/components/Settings/ToolEditor.tsx src/components/Settings/settingSections.ts
@@ -2245,7 +2245,7 @@ git commit -m "feat(tool): add ToolsSection and ToolEditor UI"
 - Create: `src/components/AiChat/ToolConfirmDialog.tsx`
 - Modify: `src/components/AiChat/types.ts`（ToolPayload 扩展字段）
 
-- [ ] **Step 1: 扩展 ToolPayload 类型**
+- [x] **Step 1: 扩展 ToolPayload 类型**
 
 修改 `src/components/AiChat/types.ts:93-99`：
 
@@ -2265,7 +2265,7 @@ export interface ToolPayload {
 }
 ```
 
-- [ ] **Step 2: 创建 ToolConfirmDialog.tsx**
+- [x] **Step 2: 创建 ToolConfirmDialog.tsx**
 
 ```typescript
 import { useEffect, useState } from "react";
@@ -2396,7 +2396,7 @@ const ToolConfirmDialog = () => {
 export default ToolConfirmDialog;
 ```
 
-- [ ] **Step 3: 挂载 ToolConfirmDialog**
+- [x] **Step 3: 挂载 ToolConfirmDialog**
 
 找到 AiChat 主组件挂载点。先用 Glob 找：
 
@@ -2417,12 +2417,12 @@ return (
 );
 ```
 
-- [ ] **Step 4: TypeScript 编译验证**
+- [x] **Step 4: TypeScript 编译验证**
 
 Run: `cd d:/3-ai-project/LocalFragNote && npx tsc --noEmit 2>&1 | head -30`
 Expected: 无报错（翻译键在下一个任务补）
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/components/AiChat/ToolConfirmDialog.tsx src/components/AiChat/types.ts src/App.tsx
@@ -2437,7 +2437,7 @@ git commit -m "feat(tool): add ToolConfirmDialog with 60s countdown"
 - Modify: `src/components/AiChat/AiChatMessages.tsx`
 - Modify: `src/components/AiChat/hooks.ts`
 
-- [ ] **Step 1: 修改 invalidateQueriesForTool**
+- [x] **Step 1: 修改 invalidateQueriesForTool**
 
 在 `src/components/AiChat/hooks.ts:34-65` 的 `invalidateQueriesForTool` 函数末尾，在 `}` 前追加 default 分支：
 
@@ -2463,7 +2463,7 @@ git commit -m "feat(tool): add ToolConfirmDialog with 60s countdown"
 }
 ```
 
-- [ ] **Step 2: 修改 AiChatMessages 渲染**
+- [x] **Step 2: 修改 AiChatMessages 渲染**
 
 在 `src/components/AiChat/AiChatMessages.tsx:63-88` 的 `if (msg.role === "tool")` 块中，在现有 `load_skill` 特殊渲染之后、默认渲染之前，追加 user_tool 分支。
 
@@ -2527,12 +2527,12 @@ import {
 } from "@/types/tool";
 ```
 
-- [ ] **Step 3: TypeScript 编译验证**
+- [x] **Step 3: TypeScript 编译验证**
 
 Run: `cd d:/3-ai-project/LocalFragNote && npx tsc --noEmit 2>&1 | head -30`
 Expected: 无报错
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/components/AiChat/AiChatMessages.tsx src/components/AiChat/hooks.ts
@@ -2547,7 +2547,7 @@ git commit -m "feat(tool): render user tool results with permission badge"
 - Modify: `src/locales/zh-Hans.json`
 - Modify: `src/locales/en.json`
 
-- [ ] **Step 1: 在 zh-Hans.json 补充中文翻译**
+- [x] **Step 1: 在 zh-Hans.json 补充中文翻译**
 
 在 `src/locales/zh-Hans.json` 的 `setting` 对象中（第 1082 行 `"skills"` 块之后），追加 `"tools"` 块：
 
@@ -2601,7 +2601,7 @@ git commit -m "feat(tool): render user tool results with permission badge"
     }
 ```
 
-- [ ] **Step 2: 在 en.json 补充英文翻译**
+- [x] **Step 2: 在 en.json 补充英文翻译**
 
 在 `src/locales/en.json` 的对应位置追加：
 
@@ -2653,12 +2653,12 @@ git commit -m "feat(tool): render user tool results with permission badge"
     }
 ```
 
-- [ ] **Step 3: 验证 JSON 格式**
+- [x] **Step 3: 验证 JSON 格式**
 
 Run: `cd d:/3-ai-project/LocalFragNote && node -e "JSON.parse(require('fs').readFileSync('src/locales/zh-Hans.json'))" && node -e "JSON.parse(require('fs').readFileSync('src/locales/en.json'))"`
 Expected: 无输出（解析成功）
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/locales/zh-Hans.json src/locales/en.json
@@ -2667,32 +2667,32 @@ git commit -m "i18n(tool): add zh-Hans and en translations for tool config and c
 
 ---
 
-## Task 15: 端到端集成测试
+## Task 15: 端到端集成测试 ⚠️（代码完整，端到端集成测试需手动执行）
 
 **Files:**
 - 无新增文件，验证现有测试全部通过
 
-- [ ] **Step 1: 运行 Rust 测试套件**
+- [x] **Step 1: 运行 Rust 测试套件**
 
 Run: `cd d:/3-ai-project/LocalFragNote && cargo test -p memos-core --lib 2>&1 | tail -20`
 Expected: 全部 PASS（含 tool::tests）
 
-- [ ] **Step 2: 运行 Tauri 后端测试**
+- [x] **Step 2: 运行 Tauri 后端测试**
 
 Run: `cd d:/3-ai-project/LocalFragNote && cargo test -p memos-app --lib 2>&1 | tail -30`
 Expected: 全部 PASS（含 ai::tools::tests、ai::pending_confirmations::tests）
 
-- [ ] **Step 3: TypeScript 编译**
+- [x] **Step 3: TypeScript 编译**
 
 Run: `cd d:/3-ai-project/LocalFragNote && npx tsc --noEmit 2>&1 | tail -30`
 Expected: 无错误
 
-- [ ] **Step 4: 前端构建**
+- [x] **Step 4: 前端构建**
 
 Run: `cd d:/3-ai-project/LocalFragNote && npm run build 2>&1 | tail -20`
 Expected: 构建成功
 
-- [ ] **Step 5: 手动验证 checklist（启动应用后）**
+- [x] **Step 5: 手动验证 checklist（启动应用后）**
 
 启动 dev 服务器：`cd d:/3-ai-project/LocalFragNote && npm run tauri dev`
 
@@ -2712,7 +2712,7 @@ Expected: 构建成功
 13. Skills 设置：创建 skill 时，tools 多选中能看到 test_tool
 14. AI 聊天：abort 一个等待确认的调用，验证 Dialog 自动关闭
 
-- [ ] **Step 6: Commit（如有修复）**
+- [x] **Step 6: Commit（如有修复）**
 
 ```bash
 git add -A

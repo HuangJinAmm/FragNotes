@@ -61,7 +61,7 @@
 - Modify: `core/src/lib.rs`
 - Modify: `core/Cargo.toml`
 
-- [ ] **Step 1: 创建迁移 SQL**
+- [x] **Step 1: 创建迁移 SQL**
 
 Create `core/migrations/V5__add_review_module.sql`:
 
@@ -113,7 +113,7 @@ CREATE TABLE review_record (
 CREATE INDEX idx_review_record_card_id ON review_record(card_id);
 ```
 
-- [ ] **Step 2: 添加 core 依赖**
+- [x] **Step 2: 添加 core 依赖**
 
 Modify `core/Cargo.toml`, 在 `[dependencies]` 末尾添加:
 
@@ -122,7 +122,7 @@ rs-fsrs = "1.2.1"
 chrono = { version = "0.4", features = ["serde"] }
 ```
 
-- [ ] **Step 3: 创建 review.rs 实体定义 + FSRS 转换**
+- [x] **Step 3: 创建 review.rs 实体定义 + FSRS 转换**
 
 Create `core/src/review.rs`:
 
@@ -217,7 +217,7 @@ pub struct DeckStats {
 }
 ```
 
-- [ ] **Step 4: 在 lib.rs 注册模块**
+- [x] **Step 4: 在 lib.rs 注册模块**
 
 Modify `core/src/lib.rs`, 在 `pub mod reaction;` 之后添加:
 
@@ -225,12 +225,12 @@ Modify `core/src/lib.rs`, 在 `pub mod reaction;` 之后添加:
 pub mod review;
 ```
 
-- [ ] **Step 5: 验证编译**
+- [x] **Step 5: 验证编译**
 
 Run: `cargo build -p memos-core`
 Expected: 编译成功（可能有 unused warning，无 error）
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add core/migrations/V5__add_review_module.sql core/src/review.rs core/src/lib.rs core/Cargo.toml
@@ -244,7 +244,7 @@ git commit -m "feat(review): add V5 migration, ReviewDeck/Card/Record entities w
 **Files:**
 - Modify: `core/src/review.rs`（追加 Deck CRUD 函数）
 
-- [ ] **Step 1: 追加 Deck CRUD 到 review.rs**
+- [x] **Step 1: 追加 Deck CRUD 到 review.rs**
 
 在 `core/src/review.rs` 末尾追加:
 
@@ -348,12 +348,12 @@ pub fn delete_deck(conn: &Connection, id: i32) -> CoreResult<()> {
 }
 ```
 
-- [ ] **Step 2: 验证编译**
+- [x] **Step 2: 验证编译**
 
 Run: `cargo build -p memos-core`
 Expected: 编译成功
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add core/src/review.rs
@@ -367,7 +367,7 @@ git commit -m "feat(review): add ReviewDeck CRUD functions"
 **Files:**
 - Modify: `core/src/review.rs`（追加 Card CRUD）
 
-- [ ] **Step 1: 追加 Card CRUD 到 review.rs**
+- [x] **Step 1: 追加 Card CRUD 到 review.rs**
 
 在 `core/src/review.rs` 末尾追加:
 
@@ -476,12 +476,12 @@ pub fn mark_cards_memo_deleted(conn: &Connection, memo_uid: &str) -> CoreResult<
 }
 ```
 
-- [ ] **Step 2: 验证编译**
+- [x] **Step 2: 验证编译**
 
 Run: `cargo build -p memos-core`
 Expected: 编译成功
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add core/src/review.rs
@@ -495,7 +495,7 @@ git commit -m "feat(review): add ReviewCard CRUD and due card query"
 **Files:**
 - Modify: `core/src/review.rs`（追加 score_card + deck_stats）
 
-- [ ] **Step 1: 追加 FSRS 调度函数**
+- [x] **Step 1: 追加 FSRS 调度函数**
 
 在 `core/src/review.rs` 末尾追加:
 
@@ -652,12 +652,12 @@ pub fn deck_stats(conn: &Connection, deck_id: i32) -> CoreResult<DeckStats> {
 }
 ```
 
-- [ ] **Step 2: 验证编译**
+- [x] **Step 2: 验证编译**
 
 Run: `cargo build -p memos-core`
 Expected: 编译成功
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add core/src/review.rs
@@ -672,7 +672,7 @@ git commit -m "feat(review): add FSRS score_card scheduling and deck_stats"
 - Create: `src-tauri/tests/review_core.rs`
 - Modify: `src-tauri/src/lib.rs`（暴露 review 模块给测试）
 
-- [ ] **Step 1: 暴露 core review 模块**
+- [x] **Step 1: 暴露 core review 模块**
 
 检查 `src-tauri/src/lib.rs` 当前内容，确认是否有 `pub mod` 声明。如果没有 lib.rs 或不含 review，追加:
 
@@ -684,7 +684,7 @@ pub mod state;
 
 注意：测试通过 `memos_core::review` 直接访问 core 层，无需经过 src-tauri。
 
-- [ ] **Step 2: 创建测试文件**
+- [x] **Step 2: 创建测试文件**
 
 Create `src-tauri/tests/review_core.rs`:
 
@@ -918,12 +918,12 @@ fn test_mark_cards_memo_deleted() {
 }
 ```
 
-- [ ] **Step 3: 运行测试验证全部通过**
+- [x] **Step 3: 运行测试验证全部通过**
 
 Run: `cd src-tauri && cargo test --test review_core`
 Expected: 10 个测试全部 PASS
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src-tauri/tests/review_core.rs src-tauri/src/lib.rs
@@ -937,7 +937,7 @@ git commit -m "test(review): add 10 core layer tests for deck/card CRUD, FSRS sc
 **Files:**
 - Modify: `src-tauri/src/ai/tools.rs`
 
-- [ ] **Step 1: 在 tool_definitions() 新增 list_memos_by_tag**
+- [x] **Step 1: 在 tool_definitions() 新增 list_memos_by_tag**
 
 Modify `src-tauri/src/ai/tools.rs`, 在 `tool_definitions()` 函数的 vec 末尾（`list_tags` 之后）追加:
 
@@ -959,7 +959,7 @@ Modify `src-tauri/src/ai/tools.rs`, 在 `tool_definitions()` 函数的 vec 末�
         }),
 ```
 
-- [ ] **Step 2: 在 execute_tool match 新增分支**
+- [x] **Step 2: 在 execute_tool match 新增分支**
 
 Modify `src-tauri/src/ai/tools.rs` 的 `execute_tool` 函数，在 `"list_tags" => ...` 之后追加:
 
@@ -967,7 +967,7 @@ Modify `src-tauri/src/ai/tools.rs` 的 `execute_tool` 函数，在 `"list_tags" 
         "list_memos_by_tag" => execute_list_memos_by_tag(args, store),
 ```
 
-- [ ] **Step 3: 实现 execute_list_memos_by_tag 函数**
+- [x] **Step 3: 实现 execute_list_memos_by_tag 函数**
 
 在 `tools.rs` 末尾（`uuid_like` 函数之前）追加:
 
@@ -1019,12 +1019,12 @@ fn execute_list_memos_by_tag(args: &Value, store: &Store) -> memos_core::CoreRes
 }
 ```
 
-- [ ] **Step 4: 验证编译**
+- [x] **Step 4: 验证编译**
 
 Run: `cd src-tauri && cargo check`
 Expected: 编译成功
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src-tauri/src/ai/tools.rs
@@ -1040,7 +1040,7 @@ git commit -m "feat(ai): add list_memos_by_tag tool for review card generation"
 - Create: `src-tauri/src/commands/review.rs`
 - Modify: `src-tauri/src/commands/mod.rs`
 
-- [ ] **Step 1: IpcError 新增 Review 变体**
+- [x] **Step 1: IpcError 新增 Review 变体**
 
 Modify `src-tauri/src/error.rs`:
 
@@ -1057,7 +1057,7 @@ Modify `src-tauri/src/error.rs`:
             IpcError::Review(msg) => write!(f, "Review: {msg}"),
 ```
 
-- [ ] **Step 2: 创建 commands/review.rs（Deck/Card 命令）**
+- [x] **Step 2: 创建 commands/review.rs（Deck/Card 命令）**
 
 Create `src-tauri/src/commands/review.rs`:
 
@@ -1196,7 +1196,7 @@ pub fn review_check_new_memos(
 }
 ```
 
-- [ ] **Step 3: 在 commands/mod.rs 注册模块**
+- [x] **Step 3: 在 commands/mod.rs 注册模块**
 
 Modify `src-tauri/src/commands/mod.rs`, 在 `pub mod reaction;` 之后添加:
 
@@ -1204,12 +1204,12 @@ Modify `src-tauri/src/commands/mod.rs`, 在 `pub mod reaction;` 之后添加:
 pub mod review;
 ```
 
-- [ ] **Step 4: 验证编译**
+- [x] **Step 4: 验证编译**
 
 Run: `cd src-tauri && cargo check`
 Expected: 编译成功
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src-tauri/src/error.rs src-tauri/src/commands/review.rs src-tauri/src/commands/mod.rs
@@ -1223,7 +1223,7 @@ git commit -m "feat(review): add IpcError::Review variant and Deck/Card/Stats Ta
 **Files:**
 - Modify: `src-tauri/src/commands/review.rs`（追加 score_card 命令）
 
-- [ ] **Step 1: 追加 score_card 命令**
+- [x] **Step 1: 追加 score_card 命令**
 
 在 `src-tauri/src/commands/review.rs` 末尾追加:
 
@@ -1319,7 +1319,7 @@ fn compute_session_stats(conn: &rusqlite::Connection, deck_id: i32) -> IpcResult
 }
 ```
 
-- [ ] **Step 2: 在 src-tauri/Cargo.toml 添加 chrono 依赖**
+- [x] **Step 2: 在 src-tauri/Cargo.toml 添加 chrono 依赖**
 
 Modify `src-tauri/Cargo.toml`, 在 `[dependencies]` 中添加（如尚无）:
 
@@ -1327,12 +1327,12 @@ Modify `src-tauri/Cargo.toml`, 在 `[dependencies]` 中添加（如尚无）:
 chrono = "0.4"
 ```
 
-- [ ] **Step 3: 验证编译**
+- [x] **Step 3: 验证编译**
 
 Run: `cd src-tauri && cargo check`
 Expected: 编译成功
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src-tauri/src/commands/review.rs src-tauri/Cargo.toml
@@ -1346,7 +1346,7 @@ git commit -m "feat(review): add review_score_card command with FSRS scheduling 
 **Files:**
 - Modify: `src-tauri/src/commands/review.rs`（追加 generate_cards + regenerate_card + agent loop）
 
-- [ ] **Step 1: 追加卡片生成相关代码**
+- [x] **Step 1: 追加卡片生成相关代码**
 
 在 `src-tauri/src/commands/review.rs` 顶部 import 区追加:
 
@@ -1849,12 +1849,12 @@ fn parse_card_json(content: &str) -> Vec<CardDraft> {
 }
 ```
 
-- [ ] **Step 2: 验证编译**
+- [x] **Step 2: 验证编译**
 
 Run: `cd src-tauri && cargo check`
 Expected: 编译成功
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src-tauri/src/commands/review.rs
@@ -1868,7 +1868,7 @@ git commit -m "feat(review): add AI card generation commands (generate_cards + r
 **Files:**
 - Modify: `src-tauri/src/main.rs`
 
-- [ ] **Step 1: 在 generate_handler! 注册 12 个 review 命令**
+- [x] **Step 1: 在 generate_handler! 注册 12 个 review 命令**
 
 Modify `src-tauri/src/main.rs`, 在 `commands::lan::lan_copy_memo_to_local,` 之后、`]` 之前添加:
 
@@ -1888,12 +1888,12 @@ Modify `src-tauri/src/main.rs`, 在 `commands::lan::lan_copy_memo_to_local,` 之
             commands::review::review_check_new_memos,
 ```
 
-- [ ] **Step 2: 验证编译**
+- [x] **Step 2: 验证编译**
 
 Run: `cd src-tauri && cargo check`
 Expected: 编译成功
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src-tauri/src/main.rs
@@ -1908,7 +1908,7 @@ git commit -m "feat(review): register 12 review Tauri commands in generate_handl
 - Create: `src/components/Review/types.ts`
 - Create: `src/components/Review/hooks.ts`
 
-- [ ] **Step 1: 创建 types.ts**
+- [x] **Step 1: 创建 types.ts**
 
 Create `src/components/Review/types.ts`:
 
@@ -2004,7 +2004,7 @@ export const CARD_STATE_LABELS: Record<number, string> = {
 };
 ```
 
-- [ ] **Step 2: 创建 hooks.ts**
+- [x] **Step 2: 创建 hooks.ts**
 
 Create `src/components/Review/hooks.ts`:
 
@@ -2233,12 +2233,12 @@ export function useCheckNewMemos(deckId: number) {
 }
 ```
 
-- [ ] **Step 3: 验证 tsc**
+- [x] **Step 3: 验证 tsc**
 
 Run: `npx tsc --noEmit`
 Expected: 无新错误（可能有预先存在的 markdown.ts 错误）
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/components/Review/types.ts src/components/Review/hooks.ts
@@ -2254,7 +2254,7 @@ git commit -m "feat(review): add TypeScript types and React hooks for review mod
 - Create: `src/components/Review/DeckEditor.tsx`
 - Create: `src/components/Review/DeckStats.tsx`
 
-- [ ] **Step 1: 创建 DeckStats.tsx（统计卡片）**
+- [x] **Step 1: 创建 DeckStats.tsx（统计卡片）**
 
 Create `src/components/Review/DeckStats.tsx`:
 
@@ -2304,7 +2304,7 @@ const DeckStatsView: FC<Props> = ({ stats, loading }) => {
 export default DeckStatsView;
 ```
 
-- [ ] **Step 2: 创建 DeckEditor.tsx（新建/编辑 deck）**
+- [x] **Step 2: 创建 DeckEditor.tsx（新建/编辑 deck）**
 
 Create `src/components/Review/DeckEditor.tsx`:
 
@@ -2425,7 +2425,7 @@ const DeckEditor = ({ open, onOpenChange, initial, onSubmit }: Props) => {
 export default DeckEditor;
 ```
 
-- [ ] **Step 3: 创建 DeckList.tsx（deck 卡片网格）**
+- [x] **Step 3: 创建 DeckList.tsx（deck 卡片网格）**
 
 Create `src/components/Review/DeckList.tsx`:
 
@@ -2578,12 +2578,12 @@ const DeckList = ({ onSelectDeck }: Props) => {
 export default DeckList;
 ```
 
-- [ ] **Step 4: 验证 tsc**
+- [x] **Step 4: 验证 tsc**
 
 Run: `npx tsc --noEmit`
 Expected: 无新错误
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/components/Review/DeckList.tsx src/components/Review/DeckEditor.tsx src/components/Review/DeckStats.tsx
@@ -2597,7 +2597,7 @@ git commit -m "feat(review): add DeckList, DeckEditor, DeckStats components"
 **Files:**
 - Create: `src/components/Review/CardReview.tsx`
 
-- [ ] **Step 1: 创建 CardReview.tsx（翻转卡 + 评分）**
+- [x] **Step 1: 创建 CardReview.tsx（翻转卡 + 评分）**
 
 Create `src/components/Review/CardReview.tsx`:
 
@@ -2782,12 +2782,12 @@ const CardReview = ({ deckId, onExit }: Props) => {
 export default CardReview;
 ```
 
-- [ ] **Step 2: 验证 tsc**
+- [x] **Step 2: 验证 tsc**
 
 Run: `npx tsc --noEmit`
 Expected: 无新错误
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/components/Review/CardReview.tsx
@@ -2803,7 +2803,7 @@ git commit -m "feat(review): add CardReview component with flip card and FSRS ra
 - Create: `src/components/Review/DeckDetail.tsx`
 - Create: `src/components/Review/GenerationProgress.tsx`
 
-- [ ] **Step 1: 创建 CardTable.tsx（卡片管理表格）**
+- [x] **Step 1: 创建 CardTable.tsx（卡片管理表格）**
 
 Create `src/components/Review/CardTable.tsx`:
 
@@ -2881,7 +2881,7 @@ const CardTable: FC<Props> = ({ cards, onRefresh }) => {
 export default CardTable;
 ```
 
-- [ ] **Step 2: 创建 DeckDetail.tsx**
+- [x] **Step 2: 创建 DeckDetail.tsx**
 
 Create `src/components/Review/DeckDetail.tsx`:
 
@@ -2982,7 +2982,7 @@ const DeckDetail = ({ deck, onBack, onStartReview }: Props) => {
 export default DeckDetail;
 ```
 
-- [ ] **Step 3: 创建 GenerationProgress.tsx（可复用进度组件）**
+- [x] **Step 3: 创建 GenerationProgress.tsx（可复用进度组件）**
 
 Create `src/components/Review/GenerationProgress.tsx`:
 
@@ -3030,12 +3030,12 @@ const GenerationProgress: FC<Props> = ({ generating, progress, result, error }) 
 export default GenerationProgress;
 ```
 
-- [ ] **Step 4: 验证 tsc**
+- [x] **Step 4: 验证 tsc**
 
 Run: `npx tsc --noEmit`
 Expected: 无新错误
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/components/Review/CardTable.tsx src/components/Review/DeckDetail.tsx src/components/Review/GenerationProgress.tsx
@@ -3053,7 +3053,7 @@ git commit -m "feat(review): add DeckDetail, CardTable, GenerationProgress compo
 - Modify: `src/router/index.tsx`
 - Modify: `src/components/Navigation.tsx`
 
-- [ ] **Step 1: 创建 index.ts 导出**
+- [x] **Step 1: 创建 index.ts 导出**
 
 Create `src/components/Review/index.ts`:
 
@@ -3069,7 +3069,7 @@ export * from "./types";
 export * from "./hooks";
 ```
 
-- [ ] **Step 2: 创建 Review.tsx 页面**
+- [x] **Step 2: 创建 Review.tsx 页面**
 
 Create `src/pages/Review.tsx`:
 
@@ -3156,7 +3156,7 @@ export default ReviewPage;
 
 注意：页面顶部需 `import React from "react";`（useEffect 需要）。
 
-- [ ] **Step 3: 修改 routes.ts**
+- [x] **Step 3: 修改 routes.ts**
 
 Modify `src/router/routes.ts`:
 
@@ -3172,7 +3172,7 @@ export const ROUTES = {
 } as const;
 ```
 
-- [ ] **Step 4: 修改 router/index.tsx**
+- [x] **Step 4: 修改 router/index.tsx**
 
 在 lazy import 区添加:
 
@@ -3188,7 +3188,7 @@ const Review = lazyWithReload(() => import("@/pages/Review"));
               { path: "review/:deckId/study", element: <Review /> },
 ```
 
-- [ ] **Step 5: 修改 Navigation.tsx 添加回顾导航项**
+- [x] **Step 5: 修改 Navigation.tsx 添加回顾导航项**
 
 Modify `src/components/Navigation.tsx`, import 添加 `BookOpenIcon`:
 
@@ -3210,12 +3210,12 @@ import { BookOpenIcon, CompassIcon, LibraryIcon, PaperclipIcon } from "lucide-re
   const primaryNavLinks: NavLinkItem[] = [homeNavLink, attachmentsNavLink, discoverNavLink, reviewNavLink];
 ```
 
-- [ ] **Step 6: 验证 tsc**
+- [x] **Step 6: 验证 tsc**
 
 Run: `npx tsc --noEmit`
 Expected: 无新错误
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/components/Review/index.ts src/pages/Review.tsx src/router/routes.ts src/router/index.tsx src/components/Navigation.tsx
@@ -3232,7 +3232,7 @@ git commit -m "feat(review): add Review page, routes, and navigation entry"
 - Create: `src/components/Settings/ReviewSection.tsx`
 - Modify: `src/components/Settings/settingSections.ts`
 
-- [ ] **Step 1: 在 en.json 添加 review 翻译键**
+- [x] **Step 1: 在 en.json 添加 review 翻译键**
 
 在 `src/locales/en.json` 顶层添加 `review` 命名空间（与 `lan` 同级）:
 
@@ -3283,7 +3283,7 @@ git commit -m "feat(review): add Review page, routes, and navigation entry"
 
 注意：`setting` 命名空间可能已存在，只需在其内添加 `review.label`。
 
-- [ ] **Step 2: 在 zh-Hans.json 添加中文翻译**
+- [x] **Step 2: 在 zh-Hans.json 添加中文翻译**
 
 在 `src/locales/zh-Hans.json` 顶层添加对应中文:
 
@@ -3332,7 +3332,7 @@ git commit -m "feat(review): add Review page, routes, and navigation entry"
   }
 ```
 
-- [ ] **Step 3: 创建 ReviewSection.tsx**
+- [x] **Step 3: 创建 ReviewSection.tsx**
 
 Create `src/components/Settings/ReviewSection.tsx`:
 
@@ -3445,7 +3445,7 @@ const ReviewSection = () => {
 export default ReviewSection;
 ```
 
-- [ ] **Step 4: 在 settingSections.ts 注册 review section**
+- [x] **Step 4: 在 settingSections.ts 注册 review section**
 
 Modify `src/components/Settings/settingSections.ts`:
 
@@ -3467,7 +3467,7 @@ import ReviewSection from "./ReviewSection";
 },
 ```
 
-- [ ] **Step 5: 补充 i18n 键**
+- [x] **Step 5: 补充 i18n 键**
 
 在 en.json 和 zh-Hans.json 的 `review` 命名空间中补充设置页用到的键:
 
@@ -3493,12 +3493,12 @@ import ReviewSection from "./ReviewSection";
     "use-default": "使用默认"
 ```
 
-- [ ] **Step 6: 验证 tsc**
+- [x] **Step 6: 验证 tsc**
 
 Run: `npx tsc --noEmit`
 Expected: 无新错误
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/locales/en.json src/locales/zh-Hans.json src/components/Settings/ReviewSection.tsx src/components/Settings/settingSections.ts
@@ -3513,7 +3513,7 @@ git commit -m "feat(review): add i18n translations and Settings section"
 - Modify: `core/src/memo.rs`（在 delete 函数中标记卡片）
 - Modify: `src-tauri/src/commands/memo.rs`（可选，若 delete 在命令层）
 
-- [ ] **Step 1: 在 memo delete 中标记卡片**
+- [x] **Step 1: 在 memo delete 中标记卡片**
 
 检查 `core/src/memo.rs` 的 `delete` 函数，在删除 memo 前/后添加标记卡片的逻辑。
 
@@ -3529,27 +3529,27 @@ Modify `core/src/memo.rs` 的 `delete` 函数，在 `UPDATE attachment SET memo_
 
 注意：需要先找到 `delete` 函数的具体位置和参数（uid 或 id）。
 
-- [ ] **Step 2: 验证编译**
+- [x] **Step 2: 验证编译**
 
 Run: `cargo build -p memos-core`
 Expected: 编译成功
 
-- [ ] **Step 3: 运行所有测试**
+- [x] **Step 3: 运行所有测试**
 
 Run: `cd src-tauri && cargo test`
 Expected: 所有测试 PASS（含 review_core 的 10 个测试）
 
-- [ ] **Step 4: 验证 tsc**
+- [x] **Step 4: 验证 tsc**
 
 Run: `npx tsc --noEmit`
 Expected: 无新错误
 
-- [ ] **Step 5: 最终 cargo build**
+- [x] **Step 5: 最终 cargo build**
 
 Run: `cd src-tauri && cargo build`
 Expected: 编译成功
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add core/src/memo.rs

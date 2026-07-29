@@ -31,10 +31,14 @@
 - **附件管理**：图片、视频、音频、Motion Photo 一站式管理，含缩略图、附件库浏览、文档摘要（markitdown）。
 - **标签与树**：标签内联于 `#tag` 文本，元数据表作为缓存索引；前端支持标签树、预设、自动补全。
 - **笔记关系**：支持 `REFERENCE`（引用）与 `COMMENT`（评论）两种关系；评论通过 `parent_id` 挂载到父笔记，且不进入 FTS / embedding 索引。
-- **FSRS 复习模块**：基于 `rs-fsfs` 的间隔重复算法，从已有笔记自动生成卡片（问答 / 完形 / 多角度），含热力图、牌组统计、复习记录。
-- **AI 聊天面板**：多 Provider 配置（OpenAI 兼容），SSE 流式输出，支持工具调用、附件图片输入、上下文管理。
+- **FSRS 复习模块**：基于 `rs-fsrs` 的间隔重复算法，从已有笔记自动生成卡片（问答 / 完形 / 多角度），含热力图、牌组统计、复习记录。
+- **AI 聊天面板**：多 Provider 配置（OpenAI 兼容），SSE 流式输出，支持工具调用、附件图片输入、上下文管理、会话持久化（V8 迁移）。
+- **AI Skills 机制**：内置 + 用户自定义 Skill（Markdown 指南文档），元数据始终注入系统提示，LLM 通过 `load_skill` 工具按需加载全文；内置 office-cli 系列 Skill（docx/pptx/xlsx/财务模型/学术论文等）。
+- **用户可配置工具**：用户可在设置中创建 shell 命令工具，由 AI agent 在权限等级确认机制（again/hard/good/easy）下调用执行。
 - **本地 LLM 启动器**：通过 `llama.cpp` 的 `llama-server` 或 LM Studio 的 `lms` CLI 拉起 OpenAI 兼容的本地端点，支持前台 / 守护两种模式与开机自启。
 - **LAN 发现与分享**：基于 `iroh`（QUIC）+ mDNS，自动发现局域网内其他实例，可预览 / 复制远端笔记与附件，按需无状态查询，不做主动同步。
+- **MCP 服务器**：内置 Streamable HTTP MCP 服务端，向同机 Claude Desktop / Cline / Continue 等客户端暴露 memo CRUD 工具、`memo://{uid}` 资源与预设提示模板（`summarize_recent` / `gather_by_tag` / `review_due`）。
+- **多工作空间**：数据目录由 `app_config_dir()` 引导，用户可创建 / 切换 / 重命名 / 删除多个工作空间，每个工作空间独立的 `memos.db` + 附件目录。
 - **多语言与主题**：内置 40+ 语言（i18next），5 套主题（默认浅 / 默认深 / 纸面 / 豆绿 / 科幻），支持系统跟随。
 - **导入导出**：JSON 格式批量导入导出，便于备份与迁移。
 
@@ -98,20 +102,26 @@ wmi = { path = "vendor/wmi" }   # Windows 本地 patched 版本
 ```
 LocalFragNote/
 ├── core/                       # memos-core 业务逻辑库
-│   ├── migrations/             # SQL 迁移（V1 ~ V7）
+│   ├── config_migrations/      # app_config.db 迁移（V1）
+│   ├── migrations/             # memos.db 迁移（V1 ~ V11）
 │   └── src/
 │       ├── attachment.rs       # 附件 CRUD
 │       ├── cache.rs            # moka 缓存
-│       ├── markdown.rs        # comrak 渲染 / 提取
+│       ├── chat_session.rs     # AI 聊天会话持久化（V8 迁移）
+│       ├── config_migration.rs # app_config.db 迁移入口
+│       ├── config_store.rs     # 共享配置 Store（app_config.db）
+│       ├── markdown.rs         # comrak 渲染 / 提取
 │       ├── memo.rs             # 笔记 CRUD + FTS / 向量同步
 │       ├── memo_relation.rs    # 笔记关系
 │       ├── migration.rs        # refinery 迁移入口
-│       ├── reaction.rs        # 反应
+│       ├── reaction.rs         # 反应
 │       ├── review.rs           # FSRS 复习
-│       ├── setting.rs         # 设置
-│       ├── store.rs           # Store 入口（连接池 + 扩展注册）
-│       ├── tag.rs             # 标签元数据
-│       └── types.rs           # 公共类型
+│       ├── setting.rs          # 设置
+│       ├── skill.rs            # AI Skill 实体（V9 迁移）
+│       ├── store.rs            # Store 入口（memos.db 连接池 + 扩展注册）
+│       ├── tag.rs              # 标签元数据
+│       ├── tool.rs             # 用户可配置工具（V10 迁移）
+│       └── types.rs            # 公共类型
 ├── docs/                       # 设计文档与计划
 │   ├── plans/
 │   └── specs/
@@ -147,30 +157,46 @@ LocalFragNote/
 ├── src-tauri/                  # Rust + Tauri 桌面壳
 │   ├── capabilities/           # Tauri 权限配置
 │   ├── icons/                  # 应用图标（已由 logo2.png 重新生成）
+│   ├── skills/                 # 内置 Skill 文档（office-cli 系列 + review/semantic_search 指南）
 │   ├── src/
-│   │   ├── ai/                 # AI provider / SSE / 工具调用
+│   │   ├── ai/                 # AI provider / SSE / 工具调用 / agent_loop / 内置 Skills / 工具确认
+│   │   │   ├── agent_loop.rs   # AI agent 循环 + RUNNING_COUNT 全局计数
+│   │   │   ├── builtin_skills.rs # 内置 Skill 解析器（include_str! + YAML front-matter）
+│   │   │   ├── llm_call.rs     # 共享 LLM 调用 helper（call_provider / call_first_provider）
+│   │   │   ├── pending_confirmations.rs # 用户工具权限确认（60s 超时 + 事件推送）
+│   │   │   ├── provider.rs     # 多 Provider 配置持久化
+│   │   │   ├── sse.rs          # SSE 流式解析
+│   │   │   └── tools.rs        # 内置 + 用户工具定义与分发
 │   │   ├── commands/           # Tauri IPC 命令（按域拆分）
-│   │   │   ├── ai_chat.rs
-│   │   │   ├── attachment.rs
-│   │   │   ├── document_summary.rs
-│   │   │   ├── import_export.rs
-│   │   │   ├── lan.rs
-│   │   │   ├── llm_runner.rs
-│   │   │   ├── memo.rs
-│   │   │   ├── memo_relation.rs
-│   │   │   ├── reaction.rs
-│   │   │   ├── review.rs
-│   │   │   └── setting.rs
+│   │   │   ├── ai_chat.rs      # AI 聊天流式命令 + agent loop 集成
+│   │   │   ├── attachment.rs   # 附件 CRUD
+│   │   │   ├── chat_session.rs # 聊天会话持久化命令
+│   │   │   ├── document_summary.rs # markitdown 文档摘要
+│   │   │   ├── import_export.rs # JSON 导入导出
+│   │   │   ├── lan.rs          # LAN 发现与远程预览
+│   │   │   ├── llm_runner.rs   # 本地 LLM 启动器控制
+│   │   │   ├── mcp.rs          # MCP 服务器启停
+│   │   │   ├── memo.rs         # 笔记 CRUD + AI 标签建议
+│   │   │   ├── memo_relation.rs # 笔记关系
+│   │   │   ├── reaction.rs     # 反应
+│   │   │   ├── review.rs       # FSRS 复习
+│   │   │   ├── setting.rs      # 设置（走 ConfigStore）
+│   │   │   ├── skill.rs        # AI Skill CRUD
+│   │   │   ├── tool.rs         # 用户工具 CRUD + 确认响应
+│   │   │   └── workspace.rs    # 工作空间切换 / 创建 / 重命名 / 删除
 │   │   ├── lan/                # iroh + mDNS 发现与协议
 │   │   ├── llm_runner/         # 本地 LLM 启动器（config / runner）
-│   │   ├── embedding.rs       # ort + tokenizers 本地推理
+│   │   ├── mcp/                # MCP 服务器（config / protocol / server / tools）
+│   │   ├── embedding.rs        # ort + tokenizers 本地推理
 │   │   ├── file_storage.rs     # 附件落盘
-│   │   ├── protocol.rs        # attachment:// URI scheme 处理
-│   │   ├── state.rs           # AppState（Store / 附件目录 / LAN / LLM / shutdown）
-│   │   ├── thumbnail.rs       # 缩略图
-│   │   ├── main.rs            # 入口（setup / 命令注册 / 退出清理）
+│   │   ├── officecli_watch.rs  # officecli watch 子进程管理器
+│   │   ├── protocol.rs         # attachment:// URI scheme 处理
+│   │   ├── state.rs            # AppState（Store / ConfigStore / WorkspaceRegistry / LAN / LLM / MCP / shutdown）
+│   │   ├── thumbnail.rs        # 缩略图
+│   │   ├── workspace.rs        # WorkspaceRegistry（多工作空间注册表）
+│   │   ├── main.rs             # 入口（setup / 命令注册 / 退出清理）
 │   │   └── lib.rs              # 库暴露口（供集成测试）
-│   ├── tests/                  # 集成测试（LAN auth / protocol / review）
+│   ├── tests/                  # 集成测试（LAN auth / protocol / 集成 / review 核心）
 │   ├── build.rs                # 构建脚本（下载 ONNX Runtime DLL）
 │   └── tauri.conf.json         # Tauri 配置
 ├── vendor/wmi/                 # 本地 patched wmi crate
@@ -233,23 +259,32 @@ npm run dev
 
 ## 数据存储说明
 
-应用所有持久化数据统一存放在用户目录下的 `localFragNote` 文件夹：
+应用采用**双层目录结构**：引导配置目录（`app_config_dir()`）+ 用户自选工作空间目录。
 
 ```
-~/localFragNote/
-├── memos.db                      # SQLite 数据库（含 FTS5 / vec0 虚拟表）
-├── attachments/                  # 附件根目录（可通过设置修改）
-│   └── ...                       # 按 filepath_template 组织
-├── lan_identity.key              # LAN 节点身份密钥（iroh NodeId）
-└── models/
-    └── all-MiniLM-L6-v2/         # 嵌入模型缓存
-        ├── model.onnx
-        └── tokenizer.json
+<app_config_dir>/                # 引导目录（由 Tauri app_config_dir() 决定）
+│                                # Windows: %APPDATA%/LocalFragNote
+│                                # macOS:   ~/Library/Application Support/LocalFragNote
+│                                # Linux:   ~/.config/LocalFragNote
+├── app_config.db                # 共享配置库（app_setting / instance_setting / tool 表）
+├── workspaces.json              # 工作空间注册表（路径列表 + active workspace）
+└── lan_identity.key             # LAN 节点身份密钥（iroh NodeId）
+
+<workspace.path>/                # 用户自选的工作空间目录（可创建多个）
+├── memos.db                     # SQLite 数据库（含 FTS5 / vec0 虚拟表）
+└── attachments/                 # 附件根目录（可通过设置修改）
+    └── ...                      # 按 filepath_template 组织
+
+~/localFragNote/models/          # 嵌入模型缓存（仍基于 home_dir，待迁移）
+└── all-MiniLM-L6-v2/
+    ├── model.onnx
+    └── tokenizer.json
 ```
 
-- 数据目录由 `src-tauri/src/main.rs` 中的 `dirs::home_dir().join("localFragNote")` 决定。
-- 附件目录可由「设置 → 存储」配置，支持相对路径（基于数据目录）或绝对路径。
-- 旧版本（基于 `app_data_dir`）数据不会自动迁移，需手动复制。
+- 引导目录由 `src-tauri/src/main.rs` 中的 `app.path().app_config_dir()` 决定。
+- 工作空间目录由用户在 `WorkspacePicker` 中选择，可创建多个并通过 `WorkspaceSwitcher` 切换。
+- 附件目录可由「设置 → 存储」配置，支持相对路径（基于工作空间目录）或绝对路径。
+- **从旧版本（`~/localFragNote`）升级**：旧 `memos.db` 与 `attachments/` 不会自动迁移到新工作空间，需在首次启动后通过 `WorkspacePicker` 选择旧目录作为工作空间路径；`app_setting` / `instance_setting` / `tool` 表则由 `config_migration` 模块从旧 `memos.db` 抽取并写入 `app_config.db`。
 
 ---
 
@@ -344,23 +379,26 @@ npm run dev
 
 ## 数据库 Schema 概览
 
-迁移文件位于 `core/migrations/`，按版本演进：
+迁移文件位于 `core/migrations/`（`memos.db` 业务库）与 `core/config_migrations/`（`app_config.db` 共享配置库），按版本演进：
+
+### memos.db（业务库）
 
 | 版本 | 文件 | 主要变更 |
 | --- | --- | --- |
-| V1 | `V1__initial_schema.sql` | `memo` / `attachment` / `memo_relation` / `reaction` / `app_setting` / `instance_setting` 与索引 |
-| V2 | `V2__add_memo_location.sql` | `memo.location` JSON 列 |
-| V3 | `V3__add_fts_and_vector.sql` | FTS5（trigram）+ 触发器；sqlite-vec `vec0(384)` 虚拟表 |
-| V4 | `V4__fix_fts_triggers.sql` | 修正 FTS 触发器 |
-| V5 | `V5__add_review_module.sql` | `review_deck` / `review_card` / `review_record` |
-| V6 | `V6__add_tag_metadata.sql` | `tag` 元数据表 + 计数索引 |
-| V7 | `V7__add_memo_parent_id.sql` | `memo.parent_id` 评论列；重建 FTS 触发器排除评论 |
+
+
+### app_config.db（共享配置库）
+
+| 版本 | 文件 | 主要变更 |
+| --- | --- | --- |
+
 
 关键约束：
 
 - `vec0` 虚拟表 384 维，对应 `all-MiniLM-L6-v2` 输出。
 - FTS5 trigram 要求 token ≥ 3 字符；短词在 `connect.ts` 中 fallback 到 LIKE。
 - `sqlite-vec` 扩展需在连接时通过 `sqlite3_auto_extension` 注册（见 `core/src/store.rs`）。
+- V11 之后，`app_setting` / `instance_setting` / `tool` 表从 `memos.db` 移到 `app_config.db`，由 `core/src/config_migration.rs` 负责首次启动时从旧库抽取迁移。
 
 ---
 
@@ -398,7 +436,9 @@ npm run tauri icon ./public/logo2.png
 ### Rust 端
 
 - **ONNX Runtime 版本严格匹配**：`ort 2.0.0-rc.12` ↔ ONNX Runtime 1.24.x。升级时需同步更新 `Cargo.toml` 与 `build.rs` 中的下载 URL。
-- **数据目录**：所有路径基于 `dirs::home_dir().join("localFragNote")`，`dirs::home_dir()` 已 deprecated，使用 `#[allow(deprecated)]` 抑制告警。
+- **数据目录**：引导目录基于 `app.path().app_config_dir()`，工作空间目录由用户选择（见「数据存储说明」）。`embedding.rs` 仍基于 `dirs::home_dir().join("localFragNote")`，待后续迁移到 `config_dir`。
+- **ConfigStore vs Store**：共享配置（`app_setting` / `instance_setting` / `tool`）存于 `app_config.db`（`ConfigStore`）；业务数据存于 `memos.db`（`Store`）。新增配置类命令应走 `state.config_store()`，业务类走 `state.store()`。
+- **多工作空间切换需重启**：`workspace_switch` 通过 `app_handle.request_restart()` 实现，切换前需 `agent_loop::is_any_running()` 检查无 AI 任务在跑。
 - **退出流程**：`main.rs` 实现 2 秒清理窗口 + 5 秒强制退出看门狗（`EXIT_CLEANUP_TIMEOUT_SECS` / `EXIT_FORCE_TIMEOUT_SECS`），避免后台任务卡住退出。
 - **shutdown 协作**：`AppState.shutdown` / `cleanup_started` 为全局原子标志，LAN / LLM 后台任务需在循环中检查并提前终止。
 - **错误处理**：IPC 错误统一为 `IpcError`；核心层为 `CoreError`；LAN 层为 `LanError`。
@@ -412,9 +452,9 @@ npm run tauri icon ./public/logo2.png
 
 ### 通用
 
-- **不自动迁移旧数据**：从 `app_data_dir` 切换到 `~/localFragNote` 后，旧数据需手动复制。
 - **wmi patched**：`vendor/wmi` 为本地补丁版本，通过 `[patch.crates-io]` 覆盖。
 - **测试**：`core/tests/crud.rs` 为核心层 CRUD 测试；`src-tauri/tests/` 覆盖 LAN auth / protocol / 集成 与 review 核心。
+- **迁移版本**：`memos.db` 当前至 V11（V8 chat_session / V9 skill / V10 tool / V11 drop_shared_config_tables）；`app_config.db` 至 V1。
 
 ---
 

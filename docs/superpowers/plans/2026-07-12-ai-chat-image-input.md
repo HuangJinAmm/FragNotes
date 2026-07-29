@@ -29,7 +29,7 @@
 **Files:**
 - Modify: `src-tauri/src/commands/ai_chat.rs:27-37`
 
-- [ ] **Step 1: 修改 ChatMessage 结构体**
+- [x] **Step 1: 修改 ChatMessage 结构体**
 
 将 `src-tauri/src/commands/ai_chat.rs` 第 27-37 行的 `ChatMessage` 结构体中 `content` 字段从 `String` 改为 `serde_json::Value`：
 
@@ -64,7 +64,7 @@ pub struct ChatMessage {
 }
 ```
 
-- [ ] **Step 2: 检查 agent_loop 中的 content 使用**
+- [x] **Step 2: 检查 agent_loop 中的 content 使用**
 
 在 `agent_loop` 函数中（第 110-249 行），messages 通过 `serde_json::to_value(m)` 序列化后直接放入请求 body。由于 `content` 现在是 `Value`，序列化时会自动输出为 JSON 字符串或数组，无需修改 agent_loop 逻辑。
 
@@ -72,18 +72,18 @@ pub struct ChatMessage {
 
 如果有 `let content = m.content.clone()` 后当字符串用的地方，需要改为 `let content = m.content.clone()`（Value 类型，仍可放入 json!宏）。
 
-- [ ] **Step 3: 检查 tool 消息构造**
+- [x] **Step 3: 检查 tool 消息构造**
 
 在 `agent_loop` 中，工具执行结果会构造 tool 角色的 ChatMessage。确认这些地方的 `content` 用 `json!(result_string)` 或 `Value::String(...)` 而非裸字符串。
 
 搜索 `agent_loop` 中所有 `ChatMessage {` 构造点，确保 `content:` 字段用 `Value::String(...)` 或 `json!(...)` 包裹。
 
-- [ ] **Step 4: 验证编译**
+- [x] **Step 4: 验证编译**
 
 Run: `cargo check -p memos-app`
 Expected: 编译通过。如果有类型不匹配错误，根据错误信息修复（通常是 `.content` 需要用 `Value::String(...)` 包裹）
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src-tauri/src/commands/ai_chat.rs
@@ -99,7 +99,7 @@ git commit -m "refactor(backend): ChatMessage.content to serde_json::Value for v
 - Modify: `src/locales/en.json`
 - Modify: `src/locales/zh-Hans.json`
 
-- [ ] **Step 1: 修改 types.ts**
+- [x] **Step 1: 修改 types.ts**
 
 在 `src/components/AiChat/types.ts` 中：
 
@@ -144,7 +144,7 @@ export interface PendingImage {
   content: string | ContentPart[];
 ```
 
-- [ ] **Step 2: 修改 en.json**
+- [x] **Step 2: 修改 en.json**
 
 在 `src/locales/en.json` 的 `"aiChat"` 对象中（在 `"error": "Error"` 之后）新增 3 个键：
 
@@ -154,7 +154,7 @@ export interface PendingImage {
     "tooManyImages": "Maximum 4 images per message",
 ```
 
-- [ ] **Step 3: 修改 zh-Hans.json**
+- [x] **Step 3: 修改 zh-Hans.json**
 
 在 `src/locales/zh-Hans.json` 的 `"aiChat"` 对象中对应位置新增：
 
@@ -164,12 +164,12 @@ export interface PendingImage {
     "tooManyImages": "最多只能添加 4 张图片",
 ```
 
-- [ ] **Step 4: 验证类型检查**
+- [x] **Step 4: 验证类型检查**
 
 Run: `npx tsc --noEmit`
 Expected: 可能会有 `hooks.ts` 和 `AiChatComposer.tsx` 的类型错误（因为 send 签名和 content 类型变了），这些会在后续 Task 修复。只确认 types.ts 本身无错误。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/components/AiChat/types.ts src/locales/en.json src/locales/zh-Hans.json
@@ -183,7 +183,7 @@ git commit -m "feat(aichat): add ContentPart/PendingImage types and i18n keys"
 **Files:**
 - Modify: `src/components/AiChat/hooks.ts:103-151`
 
-- [ ] **Step 1: 修改 send 函数签名和实现**
+- [x] **Step 1: 修改 send 函数签名和实现**
 
 在 `src/components/AiChat/hooks.ts` 中：
 
@@ -259,12 +259,12 @@ import type { ChatMessage, ContentPart, WireMessage } from "./types";
         .map((m) => ({ role: m.role, content: m.content as string | ContentPart[] }));
 ```
 
-- [ ] **Step 2: 验证类型检查**
+- [x] **Step 2: 验证类型检查**
 
 Run: `npx tsc --noEmit`
 Expected: `hooks.ts` 无错误。`AiChatComposer.tsx` 仍可能有错误（onSend 签名不匹配），下个 Task 修复。
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/components/AiChat/hooks.ts
@@ -278,7 +278,7 @@ git commit -m "refactor(aichat): send accepts string | ContentPart[]"
 **Files:**
 - Modify: `src/components/AiChat/AiChatComposer.tsx`
 
-- [ ] **Step 1: 重写 AiChatComposer.tsx**
+- [x] **Step 1: 重写 AiChatComposer.tsx**
 
 将整个 `src/components/AiChat/AiChatComposer.tsx` 文件替换为以下内容：
 
@@ -470,12 +470,12 @@ export function AiChatComposer({ isStreaming, disabled, onSend, onAbort }: AiCha
 }
 ```
 
-- [ ] **Step 2: 验证类型检查**
+- [x] **Step 2: 验证类型检查**
 
 Run: `npx tsc --noEmit`
 Expected: `AiChatComposer.tsx` 无错误。`AiChatMessages.tsx` 可能有错误（content 类型变了），下个 Task 修复。
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/components/AiChat/AiChatComposer.tsx
@@ -489,7 +489,7 @@ git commit -m "feat(aichat): add image button, paste handler, and preview to com
 **Files:**
 - Modify: `src/components/AiChat/AiChatMessages.tsx:63-64`
 
-- [ ] **Step 1: 添加 ContentPart import 和 renderUserContent 函数**
+- [x] **Step 1: 添加 ContentPart import 和 renderUserContent 函数**
 
 在 `src/components/AiChat/AiChatMessages.tsx` 中：
 
@@ -536,7 +536,7 @@ import type { ChatMessage, ContentPart } from "./types";
   };
 ```
 
-- [ ] **Step 2: 修改用户消息渲染**
+- [x] **Step 2: 修改用户消息渲染**
 
 将第 63-64 行的用户消息渲染：
 
@@ -554,12 +554,12 @@ import type { ChatMessage, ContentPart } from "./types";
               ) : typeof msg.content === "string" && msg.content ? (
 ```
 
-- [ ] **Step 3: 验证类型检查**
+- [x] **Step 3: 验证类型检查**
 
 Run: `npx tsc --noEmit`
 Expected: 无新增错误（预先存在的 markdown.ts 错误可忽略）
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/components/AiChat/AiChatMessages.tsx
@@ -568,22 +568,22 @@ git commit -m "feat(aichat): render images in user messages"
 
 ---
 
-### Task 6: 最终验证
+### Task 6: 最终验证 ⚠️（代码完整，端到端 vision 模型验证需手动执行）
 
 **Files:**
 - 无新增改动，仅验证
 
-- [ ] **Step 1: 后端编译检查**
+- [x] **Step 1: 后端编译检查**
 
 Run: `cargo check -p memos-app`
 Expected: 编译通过
 
-- [ ] **Step 2: 前端类型检查**
+- [x] **Step 2: 前端类型检查**
 
 Run: `npx tsc --noEmit`
 Expected: 无新增错误
 
-- [ ] **Step 3: 验证完成**
+- [x] **Step 3: 验证完成**
 
 确认所有 Task 已完成，无未提交的改动：
 

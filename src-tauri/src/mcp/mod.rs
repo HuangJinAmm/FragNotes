@@ -1,12 +1,16 @@
 //! 本地 MCP（Model Context Protocol）服务器
 //!
 //! 在应用内启动一个 Streamable HTTP MCP 服务端，向同机其他 MCP 客户端
-//! （Claude Desktop、Cline、Continue 等）暴露 memo 卡片的创建 / 修改 / 查询能力。
+//! （Claude Desktop、Cline、Continue 等）暴露三类能力：
+//!
+//! - **Tools**：memo 卡片的创建 / 修改 / 查询 / 删除（见 [`tools`]）
+//! - **Resources**：每条 memo 暴露为 `memo://{uid}` 资源，可在客户端用 `@memo://...` 引用
+//! - **Prompts**：预设提示模板（`summarize_recent` / `gather_by_tag` / `review_due`）
 //!
 //! 模块组成：
 //! - [`config`]：配置持久化（app_setting 表的 `mcp_config` key）
 //! - [`error`]：错误类型
-//! - [`protocol`]：JSON-RPC 2.0 与 MCP 方法处理
+//! - [`protocol`]：JSON-RPC 2.0 与 MCP 方法处理（tools / resources / prompts）
 //! - [`server`]：基于 tokio TcpListener 的最小 HTTP/1.1 实现
 //! - [`tools`]：memo CRUD 工具定义
 //!
