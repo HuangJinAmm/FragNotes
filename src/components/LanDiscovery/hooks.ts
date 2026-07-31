@@ -193,3 +193,27 @@ export function useRemoteMemoPreview(peerId: string | null, uid: string | null) 
 
   return { memo, loading, error, fetchAttachment };
 }
+
+// ---------- useRemoteMemoContent ----------
+// 轻量 hook：仅拉取远端笔记正文（用于列表卡片渲染 Markdown），不涉及附件字节。
+
+export function useRemoteMemoContent(peerId: string | null, uid: string | null) {
+  const [content, setContent] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!peerId || !uid) {
+      setContent(null);
+      return;
+    }
+    setLoading(true);
+    invoke<RemoteMemo>("lan_get_remote_memo", {
+      req: { peer_id: peerId, uid },
+    })
+      .then((m) => setContent(m.content))
+      .catch(() => setContent(null))
+      .finally(() => setLoading(false));
+  }, [peerId, uid]);
+
+  return { content, loading };
+}

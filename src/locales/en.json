@@ -67,7 +67,18 @@
       "copyFailed": "Copy failed",
       "notFound": "This memo no longer exists",
       "notPublic": "This memo is no longer public",
-      "loadFailed": "Failed to load remote memo"
+      "loadFailed": "Failed to load remote memo",
+      "select": "Select",
+      "cancel": "Cancel",
+      "selectAll": "Select all",
+      "selectedCount": "{{count}} selected",
+      "batchCopy": "Copy to local",
+      "batchCopyConfirm": "Copy {{count}} memo(s) to local? They will be created as new private memos without author attribution.",
+      "batchCopying": "Copying…",
+      "batchCopyProgress": "Copying {{done}}/{{total}}",
+      "batchCopySuccess": "{{count}} memo(s) copied to local",
+      "batchCopyPartial": "{{success}} copied, {{failed}} failed",
+      "lastSeen": "Last seen"
     },
     "settings": {
       "enabled": "Enable LAN sharing",
