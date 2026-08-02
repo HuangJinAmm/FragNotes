@@ -1,9 +1,8 @@
-# 破碎星球（LocalFragNote）
+# 破碎星球（FragNote）
 
 > 一款参考Memos项目，本地优先（local-first）的 Markdown 笔记应用，基于 Tauri 2 + React 19 + Rust 构建，所有数据均存放在用户本机目录，支持全文 / 语义搜索、附件管理、FSRS 复习、AI 聊天与局域网发现分享。
 
-
----
+***
 
 ## 目录
 
@@ -18,7 +17,7 @@
 - [开发约定与注意事项](#开发约定与注意事项)
 - [许可证](#许可证)
 
----
+***
 
 ## 核心特性
 
@@ -42,46 +41,46 @@
 - **多语言与主题**：内置 40+ 语言（i18next），5 套主题（默认浅 / 默认深 / 纸面 / 豆绿 / 科幻），支持系统跟随。
 - **导入导出**：JSON 格式批量导入导出，便于备份与迁移。
 
----
+***
 
 ## 技术栈
 
 ### 前端
 
-| 领域 | 选型 |
-| --- | --- |
-| 框架 | React 19 + TypeScript 5 |
-| 构建 | Vite 8 |
-| 样式 | Tailwind CSS 4 + tw-animate-css |
-| 桌面壳 | Tauri 2（`@tauri-apps/api` / `@tauri-apps/cli`） |
-| 路由 | react-router-dom 7 |
-| 数据请求 | @tanstack/react-query 5 + @connectrpc/connect（gRPC-Web 兼容协议层，由 `connect.ts` 适配到 Tauri IPC） |
-| 编辑器 | CodeMirror 6（`@codemirror/*`、`@lezer/*`） |
-| Markdown | react-markdown + remark/rehype 插件链（GFM、math、breaks、sanitize、自定义 tag/mention 等） |
-| 可视化 | Mermaid、KaTeX、highlight.js、html-to-image |
-| 地图 | Leaflet + react-leaflet + markercluster |
-| 组件库 | Radix UI + shadcn/ui 风格组件（`src/components/ui`） |
-| 国际化 | i18next + react-i18next |
-| 其他 | dayjs、fuse.js、lodash-es、uuid、copy-to-clipboard |
+| 领域       | 选型                                                                                         |
+| -------- | ------------------------------------------------------------------------------------------ |
+| 框架       | React 19 + TypeScript 5                                                                    |
+| 构建       | Vite 8                                                                                     |
+| 样式       | Tailwind CSS 4 + tw-animate-css                                                            |
+| 桌面壳      | Tauri 2（`@tauri-apps/api` / `@tauri-apps/cli`）                                             |
+| 路由       | react-router-dom 7                                                                         |
+| 数据请求     | @tanstack/react-query 5 + @connectrpc/connect（gRPC-Web 兼容协议层，由 `connect.ts` 适配到 Tauri IPC） |
+| 编辑器      | CodeMirror 6（`@codemirror/*`、`@lezer/*`）                                                   |
+| Markdown | react-markdown + remark/rehype 插件链（GFM、math、breaks、sanitize、自定义 tag/mention 等）             |
+| 可视化      | Mermaid、KaTeX、highlight.js、html-to-image                                                   |
+| 地图       | Leaflet + react-leaflet + markercluster                                                    |
+| 组件库      | Radix UI + shadcn/ui 风格组件（`src/components/ui`）                                             |
+| 国际化      | i18next + react-i18next                                                                    |
+| 其他       | dayjs、fuse.js、lodash-es、uuid、copy-to-clipboard                                             |
 
 ### 后端（Rust）
 
-| 领域 | 选型 |
-| --- | --- |
-| 语言 / Edition | Rust 2024 |
-| 桌面运行时 | tauri 2 |
-| 数据库 | rusqlite 0.32（bundled SQLite）+ refinery 0.8（迁移） |
-| 全文搜索 | SQLite FTS5（trigram 分词器） |
-| 向量搜索 | sqlite-vec 0.1（vec0 虚拟表，384 维） |
-| 嵌入模型 | ort 2.0.0-rc.12（ONNX Runtime 1.24.x，`load-dynamic`）+ tokenizers 0.21 |
-| 复习算法 | rs-fsrs 1.2 |
-| Markdown 渲染 | comrak 0.24 |
-| LAN 网络 | iroh 1 + iroh-mdns-address-lookup 0.4（QUIC + mDNS） |
-| 文档解析 | markitdown 0.1（附件摘要） |
-| 图像处理 | image 0.25（缩略图） |
-| 异步运行时 | tokio（full） |
-| 日志 | tracing + tracing-subscriber |
-| 错误处理 | thiserror 2 + anyhow |
+| 领域           | 选型                                                                   |
+| ------------ | -------------------------------------------------------------------- |
+| 语言 / Edition | Rust 2024                                                            |
+| 桌面运行时        | tauri 2                                                              |
+| 数据库          | rusqlite 0.32（bundled SQLite）+ refinery 0.8（迁移）                      |
+| 全文搜索         | SQLite FTS5（trigram 分词器）                                             |
+| 向量搜索         | sqlite-vec 0.1（vec0 虚拟表，384 维）                                       |
+| 嵌入模型         | ort 2.0.0-rc.12（ONNX Runtime 1.24.x，`load-dynamic`）+ tokenizers 0.21 |
+| 复习算法         | rs-fsrs 1.2                                                          |
+| Markdown 渲染  | comrak 0.24                                                          |
+| LAN 网络       | iroh 1 + iroh-mdns-address-lookup 0.4（QUIC + mDNS）                   |
+| 文档解析         | markitdown 0.1（附件摘要）                                                 |
+| 图像处理         | image 0.25（缩略图）                                                      |
+| 异步运行时        | tokio（full）                                                          |
+| 日志           | tracing + tracing-subscriber                                         |
+| 错误处理         | thiserror 2 + anyhow                                                 |
 
 ### Workspace 组织
 
@@ -92,10 +91,10 @@ members = ["core", "src-tauri"]
 wmi = { path = "vendor/wmi" }   # Windows 本地 patched 版本
 ```
 
-- `core`：纯业务逻辑库 `memos-core`，提供 memo / attachment / reaction / memo_relation / setting / review / tag 的 CRUD 与缓存。
+- `core`：纯业务逻辑库 `memos-core`，提供 memo / attachment / reaction / memo\_relation / setting / review / tag 的 CRUD 与缓存。
 - `src-tauri`：桌面应用 `memos-app`，承载 Tauri 命令、LAN、LLM 启动器、AI、embedding 等运行时能力。
 
----
+***
 
 ## 项目结构
 
@@ -206,7 +205,7 @@ LocalFragNote/
 └── tsconfig.json
 ```
 
----
+***
 
 ## 快速开始
 
@@ -255,7 +254,7 @@ npm run build
 npm run dev
 ```
 
----
+***
 
 ## 数据存储说明
 
@@ -286,7 +285,7 @@ npm run dev
 - 附件目录可由「设置 → 存储」配置，支持相对路径（基于工作空间目录）或绝对路径。
 - **从旧版本（`~/localFragNote`）升级**：旧 `memos.db` 与 `attachments/` 不会自动迁移到新工作空间，需在首次启动后通过 `WorkspacePicker` 选择旧目录作为工作空间路径；`app_setting` / `instance_setting` / `tool` 表则由 `config_migration` 模块从旧 `memos.db` 抽取并写入 `app_config.db`。
 
----
+***
 
 ## 功能模块详解
 
@@ -304,18 +303,18 @@ npm run dev
 
 `connect.ts` 中的 `parseFilter` 解析 CEL 风格的过滤表达式，支持：
 
-| 表达式 | 含义 |
-| --- | --- |
-| `fts.match("xxx")` | FTS5 全文匹配（短词 < 3 字符时 fallback 到 LIKE） |
-| `semantic.search("xxx")` | 语义搜索（先 `embed_text` 再 KNN） |
-| `content.contains("xxx")` | LIKE 子串匹配 |
-| `tag in ["a","b"]` | 标签过滤 |
-| `created_ts >= timestamp(N)` | 起始时间 |
-| `created_ts < timestamp(N)` | 截止时间 |
-| `visibility in [...]` | 可见性过滤 |
-| `pinned` / `has_link` / `has_task_list` / `has_code` | 属性过滤 |
+| 表达式                                                  | 含义                                    |
+| ---------------------------------------------------- | ------------------------------------- |
+| `fts.match("xxx")`                                   | FTS5 全文匹配（短词 < 3 字符时 fallback 到 LIKE） |
+| `semantic.search("xxx")`                             | 语义搜索（先 `embed_text` 再 KNN）            |
+| `content.contains("xxx")`                            | LIKE 子串匹配                             |
+| `tag in ["a","b"]`                                   | 标签过滤                                  |
+| `created_ts >= timestamp(N)`                         | 起始时间                                  |
+| `created_ts < timestamp(N)`                          | 截止时间                                  |
+| `visibility in [...]`                                | 可见性过滤                                 |
+| `pinned` / `has_link` / `has_task_list` / `has_code` | 属性过滤                                  |
 
-语义搜索为固定 top_k 候选集，**不支持 offset 分页**，前端按需切片。
+语义搜索为固定 top\_k 候选集，**不支持 offset 分页**，前端按需切片。
 
 ### 3. 附件
 
@@ -340,7 +339,7 @@ npm run dev
 
 ### 6. AI 聊天
 
-- 后端：`src-tauri/src/ai/`（provider 配置、SSE 解析、工具调用、llm_call）。
+- 后端：`src-tauri/src/ai/`（provider 配置、SSE 解析、工具调用、llm\_call）。
 - 命令：`commands/ai_chat.rs` 中的 `ai_chat`（流式）、`ai_abort`、`list_providers`、`save_providers_cmd`。
 - 前端：`components/AiChat/`，多 Provider 配置，支持图片附件输入。
 - Provider 配置持久化在 `app_setting` 表中。
@@ -375,7 +374,7 @@ npm run dev
 - 命令：`commands/import_export.rs` 的 `export_memos_json` 与 `import_memos_json`。
 - 格式：JSON，便于跨实例迁移与备份。
 
----
+***
 
 ## 数据库 Schema 概览
 
@@ -383,15 +382,15 @@ npm run dev
 
 ### memos.db（业务库）
 
-| 版本 | 文件 | 主要变更 |
-| --- | --- | --- |
+| 版本     | 文件     | 主要变更   |
+| ------ | ------ | ------ |
+| <br /> | <br /> | <br /> |
 
+### app\_config.db（共享配置库）
 
-### app_config.db（共享配置库）
-
-| 版本 | 文件 | 主要变更 |
-| --- | --- | --- |
-
+| 版本     | 文件     | 主要变更   |
+| ------ | ------ | ------ |
+| <br /> | <br /> | <br /> |
 
 关键约束：
 
@@ -400,7 +399,7 @@ npm run dev
 - `sqlite-vec` 扩展需在连接时通过 `sqlite3_auto_extension` 注册（见 `core/src/store.rs`）。
 - V11 之后，`app_setting` / `instance_setting` / `tool` 表从 `memos.db` 移到 `app_config.db`，由 `core/src/config_migration.rs` 负责首次启动时从旧库抽取迁移。
 
----
+***
 
 ## 构建与打包
 
@@ -429,7 +428,7 @@ npm run tauri icon ./public/logo2.png
 - 若自动下载失败，手动下载并放置 DLL 到 `src-tauri/lib/onnxruntime.dll`。
 - `build.rs` 通过 `cargo:rustc-env=ORT_DYLIB_PATH=...` 注入路径，`main.rs::setup_ort_dylib_path` 在启动最早期设置 `ORT_DYLIB_PATH` 环境变量供 `ort load-dynamic` 读取。
 
----
+***
 
 ## 开发约定与注意事项
 
@@ -454,9 +453,9 @@ npm run tauri icon ./public/logo2.png
 
 - **wmi patched**：`vendor/wmi` 为本地补丁版本，通过 `[patch.crates-io]` 覆盖。
 - **测试**：`core/tests/crud.rs` 为核心层 CRUD 测试；`src-tauri/tests/` 覆盖 LAN auth / protocol / 集成 与 review 核心。
-- **迁移版本**：`memos.db` 当前至 V11（V8 chat_session / V9 skill / V10 tool / V11 drop_shared_config_tables）；`app_config.db` 至 V1。
+- **迁移版本**：`memos.db` 当前至 V11（V8 chat\_session / V9 skill / V10 tool / V11 drop\_shared\_config\_tables）；`app_config.db` 至 V1。
 
----
+***
 
 ## 许可证
 
