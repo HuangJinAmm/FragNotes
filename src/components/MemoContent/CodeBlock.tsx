@@ -23,20 +23,13 @@ export const CodeBlock = ({ children, className, node: _node, ...props }: CodeBl
   const codeContent = extractCodeContent(children);
   const language = extractLanguage(codeClassName);
 
-  // If it's a mermaid block, render with MermaidBlock component
-  if (language === "mermaid") {
-    return (
-      <pre className="relative">
-        <MermaidBlock className={cn(className)} {...props}>
-          {children}
-        </MermaidBlock>
-      </pre>
-    );
-  }
-
   const theme = getThemeWithFallback(userGeneralSetting?.theme);
   const resolvedTheme = resolveTheme(theme);
   const isDarkTheme = resolvedTheme.includes("dark");
+
+  // 注意：所有 hooks 必须在 mermaid 早返回之前调用。
+  // 否则当同一 CodeBlock 实例的 language 在流式渲染中从 mermaid 切换为普通代码（或反之）时，
+  // hooks 数量会发生变化，触发 React error #300 ("Rendered fewer hooks than expected")。
 
   // Dynamically load highlight.js theme based on app theme
   useEffect(() => {
@@ -83,6 +76,17 @@ export const CodeBlock = ({ children, className, node: _node, ...props }: CodeBl
       textContent: codeContent,
     }).innerHTML;
   }, [language, codeContent]);
+
+  // If it's a mermaid block, render with MermaidBlock component
+  if (language === "mermaid") {
+    return (
+      <pre className="relative">
+        <MermaidBlock className={cn(className)} {...props}>
+          {children}
+        </MermaidBlock>
+      </pre>
+    );
+  }
 
   const handleCopy = async () => {
     try {
