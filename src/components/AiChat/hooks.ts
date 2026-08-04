@@ -155,8 +155,20 @@ export function useAiChat({ providerId }: UseAiChatOptions) {
               toolCallId: tool_call_id,
               toolResult: result,
               toolName: name,
+              toolArgs: args,
             };
-            next.push(toolMsg);
+            // 插入位置：保持 tool_calls → tool* → assistant(streaming) 的顺序。
+            // 同一轮次后续 tool_call 到达时,末尾已有流式 assistant,
+            // 直接 push 会把 tool 消息插到 assistant 之后,破坏配对连续性,
+            // 导致 OpenAI 报 "insufficient tool messages following tool_calls message"。
+            // 因此插入到末尾流式 assistant 之前；若无流式 assistant 则直接 push。
+            const lastIdx = next.length - 1;
+            const lastMsg = next[lastIdx];
+            if (lastMsg && lastMsg.role === "assistant" && lastMsg.streaming) {
+              next.splice(lastIdx, 0, toolMsg);
+            } else {
+              next.push(toolMsg);
+            }
             // 落库 tool 消息
             void persistCurrent(toolMsg);
             // 确保末尾有一个流式 assistant 用于接收下一轮的文本
@@ -210,7 +222,10 @@ export function useAiChat({ providerId }: UseAiChatOptions) {
           currentRunId.current = null;
           toolCallAssistantId.current = null;
           pendingUserMsgRef.current = null;
-          pendingAssistantMsgRef.current = null;
+          // 注意：不在此处清除 pendingAssistantMsgRef。
+          // setMessages 的 updater 在 React 渲染时才执行（automatic batching），
+          // 此处同步清除会导致 updater 中的 persistCurrent 条件不成立，assistant 消息不落库。
+          // pendingAssistantMsgRef 由 persistCurrent 内部在落库成功后清除。
         }),
       );
 
@@ -232,7 +247,7 @@ export function useAiChat({ providerId }: UseAiChatOptions) {
           currentRunId.current = null;
           toolCallAssistantId.current = null;
           pendingUserMsgRef.current = null;
-          pendingAssistantMsgRef.current = null;
+          // 同上：不在此处清除 pendingAssistantMsgRef，由 persistCurrent 内部处理。
         }),
       );
 
@@ -265,17 +280,23 @@ export function useAiChat({ providerId }: UseAiChatOptions) {
         if (isFinalAssistant && pendingAssistantMsgRef.current?.id === msg.id) {
           // 流式 assistant 已定稿：追加最终内容
           await persistAppendMessage(sid, msg);
-          pendingAssistantMsgRef.current = null;
+          // await 期间 ref 可能已被其他事件（如 ai:tool 创建新 assistant）修改，
+          // 仅在 ref 仍指向当前消息时才清除，避免覆盖新值导致后续落库失败
+          if (pendingAssistantMsgRef.current?.id === msg.id) {
+            pendingAssistantMsgRef.current = null;
+          }
         } else if (msg.role === "user") {
           await persistAppendMessage(sid, msg);
         } else if (msg.role === "tool") {
           await persistAppendMessage(sid, msg);
         } else if (msg.role === "assistant" && msg.toolCalls && msg.toolCalls.length > 0) {
           // 带 tool_calls 的 assistant：仅在首次出现时追加，后续更新靠 tool 消息独立记录
-          // 这里通过 pendingAssistantMsgRef 已被 null 标记跳过重复追加
           if (pendingAssistantMsgRef.current?.id === msg.id) {
             await persistAppendMessage(sid, msg);
-            pendingAssistantMsgRef.current = null;
+            // 同上：防止 await 期间 ref 被修改
+            if (pendingAssistantMsgRef.current?.id === msg.id) {
+              pendingAssistantMsgRef.current = null;
+            }
           }
         }
       } catch (e) {
@@ -287,24 +308,33 @@ export function useAiChat({ providerId }: UseAiChatOptions) {
   );
 
   /// 将前端 ChatMessage[] 构造为符合 OpenAI 工具调用协议的 WireMessage[]：
-  /// assistant(tool_calls) → tool(result) → assistant(text) 的顺序保留，
-  /// 保证 tool 消息前一定有携带 tool_calls 的 assistant 消息。
+  /// assistant(tool_calls) → tool(result) → tool(result) → assistant(text) 的顺序保留，
+  /// 保证 assistant 中每个 tool_call_id 都有对应的 tool 消息响应。
   const buildWireMessages = useCallback((src: ChatMessage[]): WireMessage[] => {
     const result: WireMessage[] = [];
+    /// 跟踪已发送的 assistant(tool_calls) 中尚未被 tool 消息响应的 tool_call_id。
+    /// 用于：
+    /// 1) 判断 tool 消息是否对应前面已发送的 tool_calls（孤立 tool 消息需跳过）
+    /// 2) 多个 tool_calls 时,后续 tool 消息不会因 prev 不是 assistant 而被误判为孤立
+    const pendingToolCallIds = new Set<string>();
     for (const m of src) {
       if (m.role === "tool") {
-        // 孤立的 tool 消息（前面的 assistant 被截断）：跳过以避免 API 报错
-        const prev = result[result.length - 1];
-        if (!prev || prev.role !== "assistant" || !(prev as WireMessage & { tool_calls?: unknown }).tool_calls) {
+        // 仅当对应 tool_call_id 来自前面已发送的 assistant(tool_calls) 时才保留
+        if (!m.toolCallId || !pendingToolCallIds.has(m.toolCallId)) {
           continue;
         }
+        pendingToolCallIds.delete(m.toolCallId);
         result.push({
           role: "tool",
           content: JSON.stringify(m.toolResult ?? ""),
-          tool_call_id: m.toolCallId ?? "",
+          tool_call_id: m.toolCallId,
         });
       } else if (m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0) {
         // 发起工具调用的 assistant：输出 tool_calls，content 留空
+        // 把所有 tool_call_id 加入待响应集合，等待后续 tool 消息逐个响应
+        for (const tc of m.toolCalls) {
+          if (tc.id) pendingToolCallIds.add(tc.id);
+        }
         result.push({
           role: "assistant",
           content: typeof m.content === "string" ? m.content : "",

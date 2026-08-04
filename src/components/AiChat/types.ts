@@ -67,6 +67,8 @@ export interface ChatMessage {
   toolResult?: unknown;
   /** tool 消息的工具名（如 "load_skill"），用于差异化渲染 */
   toolName?: string;
+  /** tool 消息的工具调用参数（用于展开显示） */
+  toolArgs?: unknown;
 }
 
 /// 助手消息中的工具调用信息

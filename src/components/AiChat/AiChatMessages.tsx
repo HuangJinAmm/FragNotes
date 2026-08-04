@@ -1,5 +1,6 @@
-import { BotIcon, UserIcon } from "lucide-react";
-import { useEffect, useRef } from "react";
+import copy from "copy-to-clipboard";
+import { BotIcon, CheckIcon, CopyIcon, UserIcon } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { MemoMarkdownRenderer } from "@/components/MemoContent/MemoMarkdownRenderer";
 import { MemoViewContext } from "@/components/MemoView/MemoViewContext";
@@ -15,6 +16,54 @@ import type { ChatMessage, ContentPart } from "./types";
 
 interface AiChatMessagesProps {
   messages: ChatMessage[];
+}
+
+/// 复制 markdown 原文的小按钮：点击复制，2 秒内显示打勾反馈。
+function CopyMarkdownButton({ text }: { text: string }) {
+  const t = useTranslate();
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    const ok = copy(text);
+    if (!ok) return;
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      className={cn(
+        "mt-1 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground",
+        "transition-colors hover:bg-foreground/5 hover:text-foreground",
+      )}
+      aria-label={t("common.copy")}
+      title={t("common.copy")}
+    >
+      {copied ? <CheckIcon className="size-3" /> : <CopyIcon className="size-3" />}
+      <span>{copied ? t("memo.copied") : t("common.copy")}</span>
+    </button>
+  );
+}
+
+/// 将工具参数格式化为 JSON 字符串（用于展开显示）
+function formatArgsJson(args: unknown): string {
+  if (args === undefined || args === null) return "";
+  if (typeof args === "string") return args;
+  try {
+    return JSON.stringify(args, null, 2);
+  } catch {
+    return String(args);
+  }
+}
+
+/// 从 content "🔧 name(...)" 中提取工具名（兼容旧消息）
+function extractToolName(content: string | ContentPart[]): string | undefined {
+  if (typeof content !== "string" || !content.startsWith("🔧 ")) return undefined;
+  const rest = content.slice(3);
+  const parenIdx = rest.indexOf("(");
+  return parenIdx === -1 ? rest : rest.slice(0, parenIdx);
 }
 
 export function AiChatMessages({ messages }: AiChatMessagesProps) {
@@ -68,6 +117,12 @@ export function AiChatMessages({ messages }: AiChatMessagesProps) {
     <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-2 space-y-3">
       {messages.map((msg) => {
         if (msg.role === "tool") {
+          // 工具参数格式化为 JSON 字符串（用于展开显示）
+          const argsJson = formatArgsJson(msg.toolArgs);
+          // 工具显示名：优先 toolName，其次从 content 解析
+          const displayName = msg.toolName ?? extractToolName(msg.content) ?? "tool";
+
+          // load_skill：保持原有特殊渲染（蓝色卡片 + skill body）
           if (msg.toolName === "load_skill") {
             const result = msg.toolResult as { id?: string; name?: string; body?: string; error?: string } | null;
             return (
@@ -87,7 +142,8 @@ export function AiChatMessages({ messages }: AiChatMessagesProps) {
               </div>
             );
           }
-          // 用户工具渲染：根据 result 中的 tool_name 和 permission 判断
+
+          // 用户工具：result 中包含 tool_name 和 permission
           const userToolResult = msg.toolResult as {
             tool_name?: string;
             permission?: string;
@@ -111,6 +167,7 @@ export function AiChatMessages({ messages }: AiChatMessagesProps) {
                     : "border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-900/30"
                 }`}
               >
+                {/* 工具名 + 权限徽章 + 拒绝标记（始终可见） */}
                 <div className="mb-1 flex items-center gap-2">
                   <span className="font-medium">{userToolResult.tool_name}</span>
                   <span className={`rounded px-1.5 py-0.5 text-[10px] ${PERMISSION_BADGE_COLORS[perm]}`}>
@@ -122,6 +179,18 @@ export function AiChatMessages({ messages }: AiChatMessagesProps) {
                     </span>
                   )}
                 </div>
+                {/* 折叠的参数区域 */}
+                {argsJson && (
+                  <details className="mb-1">
+                    <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                      {t("aiChat.tool.parameters")}
+                    </summary>
+                    <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded bg-background/50 p-1.5 font-mono text-[11px]">
+                      {argsJson}
+                    </pre>
+                  </details>
+                )}
+                {/* 输出/错误（始终可见） */}
                 {userToolResult.error ? (
                   <p className="font-mono text-red-600 dark:text-red-400">{userToolResult.error}</p>
                 ) : (
@@ -132,13 +201,38 @@ export function AiChatMessages({ messages }: AiChatMessagesProps) {
               </div>
             );
           }
+
+          // 默认工具（内置工具如 create_memo / update_memo 等）
           return (
-            <div key={msg.id} className="text-xs text-muted-foreground px-2 py-1 rounded bg-muted/50">
-              {typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content)}
+            <div key={msg.id} className="my-1 rounded border border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-900/30 p-2 text-xs">
+              <details>
+                <summary className="cursor-pointer font-medium text-muted-foreground hover:text-foreground">
+                  🔧 {displayName}
+                </summary>
+                <div className="mt-1.5 space-y-1.5">
+                  {argsJson ? (
+                    <div>
+                      <div className="text-[10px] text-muted-foreground">{t("aiChat.tool.parameters")}</div>
+                      <pre className="mt-0.5 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded bg-background/50 p-1.5 font-mono text-[11px]">
+                        {argsJson}
+                      </pre>
+                    </div>
+                  ) : (
+                    <p className="text-muted-foreground italic">{t("aiChat.tool.noParameters")}</p>
+                  )}
+                </div>
+              </details>
             </div>
           );
         }
         const isUser = msg.role === "user";
+        // assistant 非空文本回复完成（非错误、非流式）时，在气泡下方显示复制按钮
+        const showCopyButton =
+          !isUser &&
+          !msg.streaming &&
+          !msg.isError &&
+          typeof msg.content === "string" &&
+          msg.content.length > 0;
         return (
           <div
             key={msg.id}
@@ -151,33 +245,36 @@ export function AiChatMessages({ messages }: AiChatMessagesProps) {
                 <BotIcon className="size-5 text-primary" />
               )}
             </div>
-            <div
-              className={cn(
-                "max-w-[85%] rounded-lg px-3 py-2 text-sm",
-                isUser
-                  ? "bg-primary text-primary-foreground"
-                  : msg.isError
-                    ? "bg-destructive/10 text-destructive"
-                    : "bg-muted",
-              )}
-            >
-              {isUser ? (
-                renderUserContent(msg.content)
-              ) : typeof msg.content === "string" && msg.content ? (
-                <div className="break-words">
-                  <MemoViewContext.Provider value={STUB_MEMO_VIEW_CONTEXT}>
-                    <MemoMarkdownRenderer
-                      content={msg.content}
-                      resolvedMentionUsernames={new Set()}
-                    />
-                  </MemoViewContext.Provider>
-                  {msg.streaming && (
-                    <span className="inline-block w-1 h-4 ml-0.5 bg-current animate-pulse" />
-                  )}
-                </div>
-              ) : msg.streaming ? (
-                <span className="text-muted-foreground text-xs">思考中...</span>
-              ) : null}
+            <div className={cn("flex flex-col flex-1 min-w-0", isUser ? "items-end" : "items-start")}>
+              <div
+                className={cn(
+                  "max-w-[85%] rounded-lg px-3 py-2 text-sm",
+                  isUser
+                    ? "bg-primary text-primary-foreground"
+                    : msg.isError
+                      ? "bg-destructive/10 text-destructive"
+                      : "bg-muted",
+                )}
+              >
+                {isUser ? (
+                  renderUserContent(msg.content)
+                ) : typeof msg.content === "string" && msg.content ? (
+                  <div className="break-words">
+                    <MemoViewContext.Provider value={STUB_MEMO_VIEW_CONTEXT}>
+                      <MemoMarkdownRenderer
+                        content={msg.content}
+                        resolvedMentionUsernames={new Set()}
+                      />
+                    </MemoViewContext.Provider>
+                    {msg.streaming && (
+                      <span className="inline-block w-1 h-4 ml-0.5 bg-current animate-pulse" />
+                    )}
+                  </div>
+                ) : msg.streaming ? (
+                  <span className="text-muted-foreground text-xs">思考中...</span>
+                ) : null}
+              </div>
+              {showCopyButton && <CopyMarkdownButton text={msg.content as string} />}
             </div>
           </div>
         );

@@ -115,6 +115,13 @@ export function recordToMessage(rec: ChatMessageRecord): ChatMessage {
     }
   }
 
+  // toolArgs：从 content "🔧 name(args_json)" 中解析参数（兼容旧消息）
+  let toolArgs: unknown;
+  if (rec.role === "tool" && typeof content === "string") {
+    const parsed = parseToolArgsFromContent(content);
+    if (parsed) toolArgs = parsed;
+  }
+
   return {
     id: crypto.randomUUID(),
     role: rec.role,
@@ -125,7 +132,24 @@ export function recordToMessage(rec: ChatMessageRecord): ChatMessage {
     toolCallId: rec.tool_call_id ?? undefined,
     toolCalls,
     toolResult,
+    toolArgs,
   };
+}
+
+/// 从 content "🔧 name(args_json)" 中解析工具名和参数。
+/// 用于兼容旧消息（落库时未单独存储 toolArgs）。
+function parseToolArgsFromContent(content: string): unknown | undefined {
+  if (!content.startsWith("🔧 ")) return undefined;
+  const rest = content.slice(3);
+  const parenIdx = rest.indexOf("(");
+  if (parenIdx === -1) return undefined;
+  const argsStr = rest.slice(parenIdx + 1, rest.lastIndexOf(")"));
+  if (!argsStr) return undefined;
+  try {
+    return JSON.parse(argsStr);
+  } catch {
+    return argsStr;
+  }
 }
 
 /// 默认新会话标题：基于当前时间生成

@@ -45,7 +45,10 @@
       "countdown": "Auto-denied in {{seconds}} seconds",
       "deny": "Deny",
       "approve": "Approve",
-      "denied": "Denied"
+      "denied": "Denied",
+      "parameters": "Parameters",
+      "output": "Output",
+      "noParameters": "No parameters"
     }
   },
   "lan": {
