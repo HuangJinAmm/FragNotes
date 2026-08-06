@@ -42,7 +42,7 @@ function CopyMarkdownButton({ text }: { text: string }) {
       title={t("common.copy")}
     >
       {copied ? <CheckIcon className="size-3" /> : <CopyIcon className="size-3" />}
-      <span>{copied ? t("memo.copied") : t("common.copy")}</span>
+      <span>{copied ? t("message.copied") : t("common.copy")}</span>
     </button>
   );
 }

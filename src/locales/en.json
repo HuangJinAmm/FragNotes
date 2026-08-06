@@ -343,7 +343,11 @@
       "suggested-tags": "Suggested tags",
       "no-suggestions": "No tag suggestions. Save without tags?",
       "add-and-save": "Add & Save",
-      "save-without-tags": "Save without tags"
+      "save-without-tags": "Save without tags",
+      "custom-tags": "Custom tags",
+      "custom-tag-placeholder": "Enter a tag and press Enter",
+      "add-tag": "Add",
+      "invalid-tag": "Invalid tag name"
     },
     "summary": {
       "toggle": "Summarize document attachments",

@@ -293,7 +293,11 @@
       "suggested-tags": "建议标签",
       "no-suggestions": "没有标签建议。直接保存？",
       "add-and-save": "添加并保存",
-      "save-without-tags": "不添加标签保存"
+      "save-without-tags": "不添加标签保存",
+      "custom-tags": "自定义标签",
+      "custom-tag-placeholder": "输入标签后按回车添加",
+      "add-tag": "添加",
+      "invalid-tag": "标签名无效"
     },
     "summary": {
       "toggle": "AI文档摘要",
