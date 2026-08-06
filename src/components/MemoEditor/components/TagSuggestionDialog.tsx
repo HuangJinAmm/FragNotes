@@ -1,5 +1,5 @@
 import { Loader2Icon, PlusIcon, XIcon } from "lucide-react";
-import { useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { useTagCounts } from "@/hooks/useUserQueries";
 import { useTranslate } from "@/utils/i18n";
 import { MAX_TAG_LENGTH, TAG_CHAR_CLASS } from "@/utils/tag-grammar";
 
@@ -19,6 +20,10 @@ import { MAX_TAG_LENGTH, TAG_CHAR_CLASS } from "@/utils/tag-grammar";
 // shared tag grammar (see @/utils/tag-grammar). Built once — the class is
 // composed of Unicode property escapes, so the `u` flag is mandatory.
 const TAG_VALIDATE_RE = new RegExp(`^${TAG_CHAR_CLASS}+$`, "u");
+
+// Max number of autocomplete suggestions shown at once. Keeps the dropdown
+// short enough to fit inside the dialog without scrolling on most screens.
+const MAX_SUGGESTIONS = 8;
 
 interface TagSuggestionDialogProps {
   open: boolean;
@@ -40,9 +45,20 @@ const TagSuggestionDialog = ({
   onSkip,
 }: TagSuggestionDialogProps) => {
   const t = useTranslate();
+  // All tag names that already exist somewhere in the app (across the current
+  // user's memos). Used to power the manual-input autocomplete so users can
+  // reuse existing tags instead of retyping them.
+  const { data: tagCounts = {} } = useTagCounts(true);
+  const knownTags = useMemo(() => Object.keys(tagCounts).sort(), [tagCounts]);
+
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [inputValue, setInputValue] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // Index of the highlighted option in `autocompleteItems`, or -1 when no row
+  // is highlighted. -1 lets Enter fall through to "add the typed text as-is".
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const [autocompleteOpen, setAutocompleteOpen] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // Reset selection when dialog reopens with new suggestions
   const handleOpenChange = (next: boolean) => {
@@ -50,6 +66,8 @@ const TagSuggestionDialog = ({
       setSelected(new Set());
       setInputValue("");
       setError(null);
+      setHighlightedIndex(-1);
+      setAutocompleteOpen(false);
     }
     onOpenChange(next);
   };
@@ -78,36 +96,96 @@ const TagSuggestionDialog = ({
   // Manually-entered tags that don't appear in the AI suggestion list — shown as
   // removable chips. A manual tag that matches a suggestion reuses the checkbox
   // above, so it isn't duplicated here.
-  const manualTags = Array.from(selected).filter(
-    (tag) => !suggestedTags.includes(tag),
+  const manualTags = useMemo(
+    () => Array.from(selected).filter((tag) => !suggestedTags.includes(tag)),
+    [selected, suggestedTags],
   );
 
-  const addManualTag = () => {
-    // Strip a leading `#` and surrounding whitespace before validating, so users
-    // can type either "#foo" or "foo".
-    const normalized = inputValue.replace(/^#/, "").trim();
-    if (!normalized) {
+  // Autocomplete candidates: existing tags that start with the typed text
+  // (case-insensitive), excluding tags the user has already selected so the
+  // list never offers a tag that's already been added.
+  const autocompleteItems = useMemo(() => {
+    const typed = inputValue.replace(/^#/, "").trim().toLowerCase();
+    if (!typed) return [];
+    const out: string[] = [];
+    for (const tag of knownTags) {
+      if (selected.has(tag)) continue;
+      if (tag.toLowerCase().startsWith(typed)) {
+        out.push(tag);
+        if (out.length >= MAX_SUGGESTIONS) break;
+      }
+    }
+    return out;
+  }, [inputValue, knownTags, selected]);
+
+  // Keep the highlight within bounds whenever the candidate list changes.
+  useEffect(() => {
+    setHighlightedIndex(autocompleteItems.length > 0 ? 0 : -1);
+  }, [autocompleteItems]);
+
+  const addManualTag = (tag?: string) => {
+    // When called from the dropdown, `tag` is the chosen suggestion; otherwise
+    // fall back to the current input value. Strip a leading `#` and trim.
+    const raw = (tag ?? inputValue).replace(/^#/, "").trim();
+    if (!raw) {
       setInputValue("");
+      setAutocompleteOpen(false);
       return;
     }
-    if (normalized.length > MAX_TAG_LENGTH || !TAG_VALIDATE_RE.test(normalized)) {
+    if (raw.length > MAX_TAG_LENGTH || !TAG_VALIDATE_RE.test(raw)) {
       setError(t("editor.auto-tag.invalid-tag"));
       return;
     }
     setError(null);
     setInputValue("");
+    setAutocompleteOpen(false);
+    setHighlightedIndex(-1);
     setSelected((prev) => {
       const next = new Set(prev);
-      next.add(normalized);
+      next.add(raw);
       return next;
     });
+    // Refocus so the user can immediately type the next tag.
+    inputRef.current?.focus();
+  };
+
+  const handleInputChange = (value: string) => {
+    setInputValue(value);
+    setError(null);
+    setAutocompleteOpen(true);
   };
 
   const handleInputKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       e.preventDefault();
-      addManualTag();
+      if (autocompleteOpen && highlightedIndex >= 0 && highlightedIndex < autocompleteItems.length) {
+        addManualTag(autocompleteItems[highlightedIndex]);
+      } else {
+        addManualTag();
+      }
+      return;
     }
+    if (autocompleteItems.length === 0) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setAutocompleteOpen(true);
+      setHighlightedIndex((i) => (i + 1) % autocompleteItems.length);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setAutocompleteOpen(true);
+      setHighlightedIndex((i) => (i <= 0 ? autocompleteItems.length - 1 : i - 1));
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setAutocompleteOpen(false);
+      setHighlightedIndex(-1);
+    }
+  };
+
+  const handleInputBlur = () => {
+    // Defer closing so a click on a dropdown row can fire before the blur
+    // tears it down. The dropdown row's onMouseDown prevents default to keep
+    // focus on the input, but a small timeout is a cheap safety net.
+    window.setTimeout(() => setAutocompleteOpen(false), 150);
   };
 
   const handleConfirm = () => {
@@ -115,6 +193,8 @@ const TagSuggestionDialog = ({
     setSelected(new Set());
     setInputValue("");
     setError(null);
+    setHighlightedIndex(-1);
+    setAutocompleteOpen(false);
   };
 
   const handleSkip = () => {
@@ -122,7 +202,11 @@ const TagSuggestionDialog = ({
     setSelected(new Set());
     setInputValue("");
     setError(null);
+    setHighlightedIndex(-1);
+    setAutocompleteOpen(false);
   };
+
+  const showAutocomplete = autocompleteOpen && autocompleteItems.length > 0;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -200,18 +284,61 @@ const TagSuggestionDialog = ({
                   ))}
                 </div>
               )}
-              <div className="flex gap-2">
+              <div className="relative flex gap-2">
                 <Input
+                  ref={inputRef}
                   value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
+                  onChange={(e) => handleInputChange(e.target.value)}
                   onKeyDown={handleInputKeyDown}
+                  onBlur={handleInputBlur}
+                  onFocus={() => setAutocompleteOpen(true)}
                   placeholder={t("editor.auto-tag.custom-tag-placeholder")}
+                  autoComplete="off"
+                  aria-autocomplete="list"
+                  aria-expanded={showAutocomplete}
+                  aria-controls="tag-autocomplete-listbox"
+                  aria-activedescendant={
+                    showAutocomplete && highlightedIndex >= 0
+                      ? `tag-autocomplete-option-${highlightedIndex}`
+                      : undefined
+                  }
                 />
+                {showAutocomplete && (
+                  <div
+                    id="tag-autocomplete-listbox"
+                    role="listbox"
+                    className="absolute left-0 right-0 top-full z-dropdown mt-1 max-h-48 overflow-y-auto rounded-md border bg-popover p-1 shadow-md"
+                  >
+                    {autocompleteItems.map((tag, index) => (
+                      <button
+                        key={tag}
+                        id={`tag-autocomplete-option-${index}`}
+                        type="button"
+                        role="option"
+                        aria-selected={index === highlightedIndex}
+                        onMouseDown={(e) => {
+                          // Prevent the input from losing focus on click.
+                          e.preventDefault();
+                        }}
+                        onMouseEnter={() => setHighlightedIndex(index)}
+                        onClick={() => addManualTag(tag)}
+                        className={
+                          index === highlightedIndex
+                            ? "flex w-full items-center gap-2 rounded-sm bg-accent px-2 py-1.5 text-left text-sm"
+                            : "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent"
+                        }
+                      >
+                        <span className="text-muted-foreground">#</span>
+                        <span>{tag}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={addManualTag}
+                  onClick={() => addManualTag()}
                   disabled={!inputValue.trim()}
                 >
                   <PlusIcon className="size-4" />
