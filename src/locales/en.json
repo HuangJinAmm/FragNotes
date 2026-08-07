@@ -1070,6 +1070,22 @@
       "start-failed": "Failed to start local LLM service",
       "stop-failed": "Failed to stop local LLM service"
     },
+    "providers": {
+      "label": "AI Providers",
+      "description": "Manage AI chat provider configurations. Shared with the AI chat panel.",
+      "list": "Providers",
+      "empty": "No providers yet. Create one to use AI chat.",
+      "create": "New Provider",
+      "toggle-failed": "Failed to toggle provider.",
+      "delete-failed": "Failed to delete provider.",
+      "confirm-delete": "Are you sure you want to delete the provider \"{{name}}\"? This action cannot be undone.",
+      "load-failed": "Failed to load providers",
+      "save-failed": "Failed to save provider",
+      "editor": {
+        "edit": "Edit Provider",
+        "create": "New Provider"
+      }
+    },
     "mcp": {
       "label": "MCP Server",
       "description": "Expose memo card create / update / query capabilities to other MCP clients (Claude Desktop, Cline, etc.) on the same machine.",

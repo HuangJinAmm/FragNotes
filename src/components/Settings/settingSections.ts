@@ -1,5 +1,5 @@
 // 本地应用 Settings：只保留 4 个 section
-import { BarChart3Icon, BookOpenIcon, CogIcon, CpuIcon, HardDriveIcon, LibraryIcon, GalleryHorizontalEndIcon, PlugIcon, RadioIcon, SparklesIcon, TagsIcon, UserIcon, WrenchIcon, type LucideIcon } from "lucide-react";
+import { BarChart3Icon, BookOpenIcon, CogIcon, CpuIcon, HardDriveIcon, LibraryIcon, GalleryHorizontalEndIcon, PlugIcon, RadioIcon, ServerIcon, SparklesIcon, TagsIcon, UserIcon, WrenchIcon, type LucideIcon } from "lucide-react";
 import { type ComponentType } from "react";
 import MemoRelatedSettings from "@/components/Settings/MemoRelatedSettings";
 import MyAccountSection from "@/components/Settings/MyAccountSection";
@@ -7,6 +7,7 @@ import PreferencesSection from "@/components/Settings/PreferencesSection";
 import LanShareSection from "@/components/Settings/LanShareSection";
 import LocalLlmSection from "@/components/Settings/LocalLlmSection";
 import McpSection from "@/components/Settings/McpSection";
+import ProvidersSection from "@/components/Settings/ProvidersSection";
 import ResourceStatsSection from "@/components/Settings/ResourceStatsSection";
 import StorageSection from "@/components/Settings/StorageSection";
 import TagsSection from "@/components/Settings/TagsSection";
@@ -25,6 +26,7 @@ export type SettingSectionKey =
   | "resource-stats"
   | "lan-share"
   | "local-llm"
+  | "providers"
   | "mcp"
   | "review"
   | "skills"
@@ -98,6 +100,13 @@ export const SETTINGS_SECTIONS: SettingSectionDefinition[] = [
     labelKey: "setting.local-llm.label",
     icon: CpuIcon,
     component: LocalLlmSection,
+  },
+  {
+    key: "providers",
+    scope: "basic",
+    labelKey: "setting.providers.label",
+    icon: ServerIcon,
+    component: ProvidersSection,
   },
   {
     key: "mcp",
