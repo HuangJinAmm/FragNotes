@@ -192,6 +192,31 @@ pub fn tool_definitions(user_tools: &[Tool]) -> Vec<Value> {
                 }
             }
         }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "update_plan",
+                "description": "创建或更新当前任务的任务清单（todo-list）。当用户提出复杂、多步骤任务时，应先用本工具制定计划，再逐步执行。每次完成一个步骤后调用本工具更新状态。简单单步任务无需使用。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "todos": {
+                            "type": "array",
+                            "description": "任务清单，包含所有步骤及其当前状态。每次调用需传入完整清单（全量替换）。",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "content": { "type": "string", "description": "该步骤的简短描述" },
+                                    "status": { "type": "string", "enum": ["pending", "in_progress", "completed"], "description": "步骤状态：pending=待执行，in_progress=进行中（同一时间仅一个），completed=已完成" }
+                                },
+                                "required": ["content", "status"]
+                            }
+                        }
+                    },
+                    "required": ["todos"]
+                }
+            }
+        }),
     ];
     // 追加用户工具定义
     for ut in user_tools.iter().filter(|t| t.enabled) {
@@ -243,6 +268,7 @@ pub fn execute_tool(
             execute_load_skill(args, store, &config_store, builtin)
         }
         "officecli" => execute_officecli(args, state),
+        "update_plan" => execute_update_plan(args),
         other => {
             // 内置工具名已知但没匹配上（不应该发生）
             if memos_core::tool::BUILTIN_TOOL_NAMES.contains(&other) {
@@ -664,6 +690,53 @@ fn execute_load_skill(
             "error": "skill not found or disabled"
         })),
     }
+}
+
+/// update_plan 工具：接收 AI 制定的任务清单，原样回传供前端渲染进度卡片。
+/// 该工具不操作数据库，仅作为 AI 与前端之间的状态同步通道。
+fn execute_update_plan(args: &Value) -> memos_core::CoreResult<Value> {
+    let todos = args
+        .get("todos")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| memos_core::CoreError::Other("缺少 todos 参数".to_string()))?;
+
+    if todos.is_empty() {
+        return Ok(json!({ "todos": [], "total": 0, "completed": 0 }));
+    }
+
+    // 规范化每条 todo：仅保留 content + status，校验 status 取值
+    let valid_statuses = ["pending", "in_progress", "completed"];
+    let mut normalized: Vec<Value> = Vec::with_capacity(todos.len());
+    let mut completed = 0u32;
+    for t in todos {
+        let content = t
+            .get("content")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim();
+        if content.is_empty() {
+            continue;
+        }
+        let status = t
+            .get("status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("pending");
+        let status = if valid_statuses.contains(&status) {
+            status
+        } else {
+            "pending"
+        };
+        if status == "completed" {
+            completed += 1;
+        }
+        normalized.push(json!({ "content": content, "status": status }));
+    }
+
+    Ok(json!({
+        "todos": normalized,
+        "total": normalized.len(),
+        "completed": completed,
+    }))
 }
 
 /// officecli 工具输出最大字节数（超出则头尾截断）
@@ -1120,7 +1193,7 @@ mod tests {
     #[test]
     fn test_tool_definitions_count() {
         let defs = tool_definitions(&[]);
-        assert_eq!(defs.len(), 11);
+        assert_eq!(defs.len(), 12);
         let names: Vec<&str> = defs
             .iter()
             .map(|d| d["function"]["name"].as_str().unwrap())
@@ -1136,6 +1209,7 @@ mod tests {
         assert!(names.contains(&"create_review_cards"));
         assert!(names.contains(&"load_skill"));
         assert!(names.contains(&"officecli"));
+        assert!(names.contains(&"update_plan"));
     }
 
     #[test]
@@ -1159,13 +1233,73 @@ mod tests {
             ..enabled.clone()
         };
         let defs = tool_definitions(&[enabled, disabled]);
-        assert_eq!(defs.len(), 12); // 11 built-in + 1 enabled user tool
+        assert_eq!(defs.len(), 13); // 12 built-in + 1 enabled user tool
         let names: Vec<&str> = defs
             .iter()
             .map(|d| d["function"]["name"].as_str().unwrap())
             .collect();
         assert!(names.contains(&"my_tool"));
         assert!(!names.contains(&"disabled_tool"));
+    }
+
+    #[test]
+    fn test_update_plan_normal() {
+        let result = execute_update_plan(&json!({
+            "todos": [
+                {"content": "读取笔记", "status": "completed"},
+                {"content": "生成卡片", "status": "in_progress"},
+                {"content": "保存", "status": "pending"}
+            ]
+        }))
+        .unwrap();
+        let todos = result["todos"].as_array().unwrap();
+        assert_eq!(todos.len(), 3);
+        assert_eq!(result["total"].as_u64().unwrap(), 3);
+        assert_eq!(result["completed"].as_u64().unwrap(), 1);
+        assert_eq!(todos[0]["status"].as_str().unwrap(), "completed");
+        assert_eq!(todos[1]["status"].as_str().unwrap(), "in_progress");
+        assert_eq!(todos[2]["status"].as_str().unwrap(), "pending");
+    }
+
+    #[test]
+    fn test_update_plan_empty() {
+        let result = execute_update_plan(&json!({"todos": []})).unwrap();
+        assert_eq!(result["total"].as_u64().unwrap(), 0);
+        assert_eq!(result["completed"].as_u64().unwrap(), 0);
+        assert_eq!(result["todos"].as_array().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn test_update_plan_missing_todos() {
+        let result = execute_update_plan(&json!({}));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_update_plan_invalid_status_normalized() {
+        let result = execute_update_plan(&json!({
+            "todos": [
+                {"content": "步骤", "status": "weird"}
+            ]
+        }))
+        .unwrap();
+        let todos = result["todos"].as_array().unwrap();
+        assert_eq!(todos.len(), 1);
+        assert_eq!(todos[0]["status"].as_str().unwrap(), "pending");
+    }
+
+    #[test]
+    fn test_update_plan_skips_empty_content() {
+        let result = execute_update_plan(&json!({
+            "todos": [
+                {"content": "  有效步骤  ", "status": "pending"},
+                {"content": "", "status": "pending"}
+            ]
+        }))
+        .unwrap();
+        let todos = result["todos"].as_array().unwrap();
+        assert_eq!(todos.len(), 1);
+        assert_eq!(todos[0]["content"].as_str().unwrap(), "有效步骤");
     }
 
     #[test]

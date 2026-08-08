@@ -36,6 +36,10 @@
     "skill": {
       "loaded": "加载 Skill: {{name}}"
     },
+    "plan": {
+      "title": "任务清单",
+      "empty": "暂无任务步骤"
+    },
     "tool": {
       "confirm-title": "工具调用确认",
       "confirm-description": "AI 助手请求执行以下工具，请确认。",

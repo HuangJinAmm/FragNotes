@@ -78,6 +78,22 @@ export interface ToolCallInfo {
   args: unknown;
 }
 
+/// 任务清单步骤状态
+export type PlanTodoStatus = "pending" | "in_progress" | "completed";
+
+/// 任务清单单条步骤
+export interface PlanTodo {
+  content: string;
+  status: PlanTodoStatus;
+}
+
+/// update_plan 工具返回结果
+export interface PlanResult {
+  todos: PlanTodo[];
+  total: number;
+  completed: number;
+}
+
 /// 发送给后端的消息格式
 export interface WireMessage {
   role: string;

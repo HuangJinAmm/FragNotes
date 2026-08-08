@@ -1,5 +1,14 @@
 import copy from "copy-to-clipboard";
-import { BotIcon, CheckIcon, CopyIcon, UserIcon } from "lucide-react";
+import {
+  BotIcon,
+  CheckIcon,
+  CopyIcon,
+  ListTodoIcon,
+  LoaderIcon,
+  CircleIcon,
+  CheckCircle2Icon,
+  UserIcon,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { MemoMarkdownRenderer } from "@/components/MemoContent/MemoMarkdownRenderer";
@@ -12,7 +21,7 @@ import {
   PERMISSION_LABELS,
   type ToolPermission,
 } from "@/types/tool";
-import type { ChatMessage, ContentPart } from "./types";
+import type { ChatMessage, ContentPart, PlanResult, PlanTodoStatus } from "./types";
 
 interface AiChatMessagesProps {
   messages: ChatMessage[];
@@ -64,6 +73,65 @@ function extractToolName(content: string | ContentPart[]): string | undefined {
   const rest = content.slice(3);
   const parenIdx = rest.indexOf("(");
   return parenIdx === -1 ? rest : rest.slice(0, parenIdx);
+}
+
+/// 任务清单卡片：渲染 update_plan 工具返回的 todo-list 及进度
+function PlanCard({ result }: { result: PlanResult | null }) {
+  const t = useTranslate();
+  const todos = result?.todos ?? [];
+  const total = result?.total ?? todos.length;
+  const completed = result?.completed ?? todos.filter((td) => td.status === "completed").length;
+  const allDone = total > 0 && completed === total;
+
+  const statusIcon = (status: PlanTodoStatus) => {
+    if (status === "completed") {
+      return <CheckCircle2Icon className="size-3.5 shrink-0 text-emerald-500" />;
+    }
+    if (status === "in_progress") {
+      return <LoaderIcon className="size-3.5 shrink-0 text-blue-500 animate-spin" />;
+    }
+    return <CircleIcon className="size-3.5 shrink-0 text-muted-foreground" />;
+  };
+
+  return (
+    <div className="my-1 rounded border border-violet-200 bg-violet-50 dark:border-violet-900 dark:bg-violet-950/30 p-2 text-xs">
+      <div className="mb-1.5 flex items-center gap-2">
+        <ListTodoIcon className="size-3.5 text-violet-600 dark:text-violet-400" />
+        <span className="font-medium text-violet-700 dark:text-violet-300">
+          {t("aiChat.plan.title")}
+        </span>
+        <span
+          className={cn(
+            "ml-auto rounded px-1.5 py-0.5 text-[10px]",
+            allDone
+              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300"
+              : "bg-violet-100 text-violet-700 dark:bg-violet-900/50 dark:text-violet-300",
+          )}
+        >
+          {completed}/{total}
+        </span>
+      </div>
+      {todos.length > 0 ? (
+        <ol className="space-y-1">
+          {todos.map((td, i) => (
+            <li
+              key={i}
+              className={cn(
+                "flex items-start gap-1.5",
+                td.status === "completed" && "text-muted-foreground line-through",
+                td.status === "in_progress" && "text-foreground",
+              )}
+            >
+              {statusIcon(td.status)}
+              <span className="break-words">{td.content}</span>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className="text-muted-foreground italic">{t("aiChat.plan.empty")}</p>
+      )}
+    </div>
+  );
 }
 
 export function AiChatMessages({ messages }: AiChatMessagesProps) {
@@ -121,6 +189,12 @@ export function AiChatMessages({ messages }: AiChatMessagesProps) {
           const argsJson = formatArgsJson(msg.toolArgs);
           // 工具显示名：优先 toolName，其次从 content 解析
           const displayName = msg.toolName ?? extractToolName(msg.content) ?? "tool";
+
+          // update_plan：渲染任务清单进度卡片
+          if (msg.toolName === "update_plan") {
+            const result = msg.toolResult as PlanResult | null;
+            return <PlanCard key={msg.id} result={result} />;
+          }
 
           // load_skill：保持原有特殊渲染（蓝色卡片 + skill body）
           if (msg.toolName === "load_skill") {

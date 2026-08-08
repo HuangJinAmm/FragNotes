@@ -36,6 +36,10 @@
     "skill": {
       "loaded": "Loaded Skill: {{name}}"
     },
+    "plan": {
+      "title": "Task Plan",
+      "empty": "No tasks yet"
+    },
     "tool": {
       "confirm-title": "Tool Call Confirmation",
       "confirm-description": "The AI assistant is requesting to execute the following tool. Please confirm.",
