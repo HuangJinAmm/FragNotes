@@ -1,5 +1,6 @@
 use memos_core::*;
 use memos_core::kg_node::{FindKgNode, KgNode, UpsertKgNode};
+use memos_core::kg_edge::KgEdge;
 
 fn open_test_store() -> Store {
     Store::open_in_memory().expect("打开内存数据库失败")
@@ -128,4 +129,44 @@ fn kg_node_delete_cascades() {
     // get 应返回 NotFound
     let err = kg_node::get(&conn, n1.id);
     assert!(err.is_err());
+}
+
+#[test]
+fn kg_edge_create_and_list() {
+    let store = open_test_store();
+    let conn = store.lock_conn();
+    let n1 = make_node(&conn, "n1");
+    let n2 = make_node(&conn, "n2");
+
+    let edge = kg_edge::create(&conn, n1.id, n2.id, "related", "关联").unwrap();
+    assert_eq!(edge.source_id, n1.id);
+    assert_eq!(edge.target_id, n2.id);
+    assert_eq!(edge.r#type, "related");
+    assert_eq!(edge.label, "关联");
+
+    let edges = kg_edge::list_by_nodes(&conn, &[n1.id, n2.id]).unwrap();
+    assert_eq!(edges.len(), 1);
+    assert_eq!(edges[0].id, edge.id);
+}
+
+#[test]
+fn kg_edge_unique_and_delete() {
+    let store = open_test_store();
+    let conn = store.lock_conn();
+    let n1 = make_node(&conn, "n1");
+    let n2 = make_node(&conn, "n2");
+
+    let edge = kg_edge::create(&conn, n1.id, n2.id, "related", "").unwrap();
+    // 相同 source/target/type 应冲突
+    let dup = kg_edge::create(&conn, n1.id, n2.id, "related", "");
+    assert!(dup.is_err(), "应拒绝重复边");
+
+    // 不同 type 允许
+    let edge2 = kg_edge::create(&conn, n1.id, n2.id, "contains", "");
+    assert!(edge2.is_ok());
+
+    // 删除
+    kg_edge::delete(&conn, edge.id).unwrap();
+    let edges = kg_edge::list_by_nodes(&conn, &[n1.id, n2.id]).unwrap();
+    assert_eq!(edges.len(), 1);
 }
