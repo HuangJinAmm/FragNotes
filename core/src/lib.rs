@@ -10,6 +10,9 @@ pub mod error;
 pub mod markdown;
 pub mod memo;
 pub mod memo_relation;
+pub mod kg_node;
+// pub mod kg_edge;       // Task 3
+// pub mod memo_kg_node;  // Task 4
 pub mod migration;
 pub mod config_migration;
 pub mod config_store;
