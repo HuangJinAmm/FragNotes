@@ -155,32 +155,39 @@ pub fn kg_edge_list(state: tauri::State<'_, AppState>, req: ListKgEdgesRequest) 
 }
 
 #[tauri::command]
-pub fn kg_link_memo(state: tauri::State<'_, AppState>, memo_id: i32, node_id: i32) -> IpcResult<()> {
+pub fn kg_link_memo(state: tauri::State<'_, AppState>, memo_uid: String, node_id: i32) -> IpcResult<()> {
     let store = state.store();
-    store.with_conn(|c| memo_kg_node::link(c, memo_id, node_id))?;
+    store.with_conn(|c| {
+        let memo = memo::get(c, &memo::FindMemo { uid: Some(memo_uid.clone()), ..Default::default() })?
+            .ok_or_else(|| memos_core::CoreError::NotFound(format!("memo uid {memo_uid}")))?;
+        memo_kg_node::link(c, memo.id, node_id)
+    })?;
     Ok(())
 }
 
 #[tauri::command]
-pub fn kg_unlink_memo(state: tauri::State<'_, AppState>, memo_id: i32, node_id: i32) -> IpcResult<()> {
+pub fn kg_unlink_memo(state: tauri::State<'_, AppState>, memo_uid: String, node_id: i32) -> IpcResult<()> {
     let store = state.store();
-    store.with_conn(|c| memo_kg_node::unlink(c, memo_id, node_id))?;
+    store.with_conn(|c| {
+        let memo = memo::get(c, &memo::FindMemo { uid: Some(memo_uid.clone()), ..Default::default() })?
+            .ok_or_else(|| memos_core::CoreError::NotFound(format!("memo uid {memo_uid}")))?;
+        memo_kg_node::unlink(c, memo.id, node_id)
+    })?;
     Ok(())
 }
 
 /// 返回笔记关联的节点：自动匹配（标签交集）∪ 手动关联，去重
 #[tauri::command]
-pub fn kg_list_memo_nodes(state: tauri::State<'_, AppState>, memo_id: i32) -> IpcResult<Vec<KgNode>> {
+pub fn kg_list_memo_nodes(state: tauri::State<'_, AppState>, memo_uid: String) -> IpcResult<Vec<KgNode>> {
     let store = state.store();
     Ok(store.with_conn(|c| {
-        // 取笔记 tags
-        let memo_obj = memo::get(c, &memo::FindMemo { id: Some(memo_id), ..Default::default() })?
-            .ok_or_else(|| memos_core::CoreError::NotFound(format!("memo {memo_id}")))?;
+        let memo_obj = memo::get(c, &memo::FindMemo { uid: Some(memo_uid.clone()), ..Default::default() })?
+            .ok_or_else(|| memos_core::CoreError::NotFound(format!("memo uid {memo_uid}")))?;
         let memo_tags = memos_core::markdown::extract_tags(&memo_obj.content);
         // 自动匹配节点
         let mut node_ids = memo_kg_node::find_nodes_by_memo_tags(c, &memo_tags)?;
         // 加入手动关联
-        for nid in memo_kg_node::list_by_memo(c, memo_id)? {
+        for nid in memo_kg_node::list_by_memo(c, memo_obj.id)? {
             if !node_ids.contains(&nid) {
                 node_ids.push(nid);
             }

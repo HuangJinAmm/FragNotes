@@ -1,9 +1,12 @@
 import { create } from "@bufbuild/protobuf";
 import { timestampDate } from "@bufbuild/protobuf/wkt";
 import { isEqual } from "lodash-es";
-import { CheckCircleIcon, ChevronRightIcon, Code2Icon, HashIcon, ImageIcon, LinkIcon, type LucideIcon } from "lucide-react";
-import { useMemo } from "react";
+import { CheckCircleIcon, ChevronRightIcon, Code2Icon, HashIcon, ImageIcon, Link2Icon, LinkIcon, type LucideIcon, PlusIcon } from "lucide-react";
+import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { KgNodePicker } from "@/components/KnowledgeGraph";
 import { Button } from "@/components/ui/button";
+import { useLinkMemoToNode, useMemoKgNodes } from "@/hooks/useKgQueries";
 import { cn } from "@/lib/utils";
 import { Memo, Memo_PropertySchema } from "@/types/proto/api/v1/memo_service_pb";
 import { type Translations, useTranslate } from "@/utils/i18n";
@@ -45,6 +48,12 @@ const MemoDetailSidebar = ({ memo, className, onShareImageOpen }: Props) => {
   const property = create(Memo_PropertySchema, memo.property || {});
   const hasUpdated = !isEqual(memo.createTime, memo.updateTime);
   const headings = useMemo(() => extractHeadings(memo.content), [memo.content]);
+
+  const navigate = useNavigate();
+  const memoUid = memo.name.split("/").pop() ?? "";
+  const { data: kgNodes = [] } = useMemoKgNodes(memoUid);
+  const linkMemo = useLinkMemoToNode();
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   const propertyBadges = useMemo(() => {
     const badges: PropertyBadge[] = [];
@@ -112,6 +121,40 @@ const MemoDetailSidebar = ({ memo, className, onShareImageOpen }: Props) => {
           </div>
         </SidebarSection>
       )}
+
+      {kgNodes.length > 0 && (
+        <SidebarSection label={t("kg.memo-sidebar-section")} count={kgNodes.length}>
+          <div className="flex flex-wrap gap-1.5">
+            {kgNodes.map((node) => (
+              <button
+                key={node.id}
+                type="button"
+                onClick={() => navigate(`/knowledge-graph?select=${node.id}`)}
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md border border-border/60 bg-muted/60 text-sm text-muted-foreground hover:bg-muted hover:text-foreground/80 transition-colors"
+              >
+                <Link2Icon className="w-3 h-3 opacity-50" />
+                {node.name}
+              </button>
+            ))}
+          </div>
+        </SidebarSection>
+      )}
+
+      <button
+        type="button"
+        onClick={() => setPickerOpen(true)}
+        className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+      >
+        <PlusIcon className="w-3 h-3" />
+        {t("kg.memo-sidebar-link")}
+      </button>
+
+      <KgNodePicker
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        excludeNodeIds={kgNodes.map((n) => n.id)}
+        onPick={(nodeId) => linkMemo.mutate({ memoUid, nodeId })}
+      />
 
     </aside>
   );

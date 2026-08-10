@@ -16,7 +16,7 @@ export const kgKeys = {
   nodes: () => [...kgKeys.all, "nodes"] as const,
   edges: () => [...kgKeys.all, "edges"] as const,
   nodeMemos: (nodeId: number) => [...kgKeys.all, "nodeMemos", nodeId] as const,
-  memoNodes: (memoId: number) => [...kgKeys.all, "memoNodes", memoId] as const,
+  memoNodes: (memoUid: string) => [...kgKeys.all, "memoNodes", memoUid] as const,
 };
 
 export function useKgNodes() {
@@ -110,18 +110,18 @@ export function useDeleteKgEdge() {
 export function useLinkMemoToNode() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ memoId, nodeId }: { memoId: number; nodeId: number }) =>
-      invoke<void>("kg_link_memo", { memoId, nodeId }),
-    onSuccess: (_data, { memoId }) => qc.invalidateQueries({ queryKey: kgKeys.memoNodes(memoId) }),
+    mutationFn: ({ memoUid, nodeId }: { memoUid: string; nodeId: number }) =>
+      invoke<void>("kg_link_memo", { memoUid, nodeId }),
+    onSuccess: (_data, { memoUid }) => qc.invalidateQueries({ queryKey: kgKeys.memoNodes(memoUid) }),
   });
 }
 
 export function useUnlinkMemoFromNode() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ memoId, nodeId }: { memoId: number; nodeId: number }) =>
-      invoke<void>("kg_unlink_memo", { memoId, nodeId }),
-    onSuccess: (_data, { memoId }) => qc.invalidateQueries({ queryKey: kgKeys.memoNodes(memoId) }),
+    mutationFn: ({ memoUid, nodeId }: { memoUid: string; nodeId: number }) =>
+      invoke<void>("kg_unlink_memo", { memoUid, nodeId }),
+    onSuccess: (_data, { memoUid }) => qc.invalidateQueries({ queryKey: kgKeys.memoNodes(memoUid) }),
   });
 }
 
@@ -133,10 +133,10 @@ export function useKgNodeMemos(nodeId: number | null) {
   });
 }
 
-export function useMemoKgNodes(memoId: number | null) {
+export function useMemoKgNodes(memoUid: string | null) {
   return useQuery<KgNode[]>({
-    queryKey: kgKeys.memoNodes(memoId ?? 0),
-    queryFn: () => invoke<KgNode[]>("kg_list_memo_nodes", { memoId }),
-    enabled: memoId != null,
+    queryKey: kgKeys.memoNodes(memoUid ?? ""),
+    queryFn: () => invoke<KgNode[]>("kg_list_memo_nodes", { memoUid }),
+    enabled: memoUid != null,
   });
 }
