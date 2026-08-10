@@ -2,6 +2,8 @@ import copy from "copy-to-clipboard";
 import {
   BotIcon,
   CheckIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
   CopyIcon,
   ListTodoIcon,
   LoaderIcon,
@@ -129,6 +131,65 @@ function PlanCard({ result }: { result: PlanResult | null }) {
         </ol>
       ) : (
         <p className="text-muted-foreground italic">{t("aiChat.plan.empty")}</p>
+      )}
+    </div>
+  );
+}
+
+/// 思考过程展示框：
+/// - 最多显示 4 行（max-h-24，leading-6 → 约 4 行）
+/// - 流式过程中自动滚动到底部，显示最新思考内容
+/// - 思考完成后可滚动查看全部内容
+/// - 可通过点击 header 折叠/展开
+function ThinkingBox({ reasoning, streaming }: { reasoning: string; streaming: boolean }) {
+  const t = useTranslate();
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const [collapsed, setCollapsed] = useState(false);
+
+  // 流式过程中自动滚动到底部，显示最新思考内容
+  useEffect(() => {
+    if (streaming && !collapsed && bodyRef.current) {
+      bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
+    }
+  }, [reasoning, streaming, collapsed]);
+
+  // 思考刚完成时（streaming 从 true → false），滚动到顶部便于从头查看
+  const prevStreamingRef = useRef(streaming);
+  useEffect(() => {
+    if (prevStreamingRef.current && !streaming && !collapsed && bodyRef.current) {
+      bodyRef.current.scrollTop = 0;
+    }
+    prevStreamingRef.current = streaming;
+  }, [streaming, collapsed]);
+
+  return (
+    <div className="mb-1.5 rounded border border-amber-200 bg-amber-50/60 dark:border-amber-900/50 dark:bg-amber-950/20 text-xs overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setCollapsed((c) => !c)}
+        className="flex w-full items-center gap-1.5 px-2 py-1 text-amber-700 dark:text-amber-300 hover:bg-amber-100/50 dark:hover:bg-amber-900/30 transition-colors"
+      >
+        {collapsed ? (
+          <ChevronRightIcon className="size-3 shrink-0" />
+        ) : (
+          <ChevronDownIcon className="size-3 shrink-0" />
+        )}
+        {streaming ? (
+          <LoaderIcon className="size-3 shrink-0 animate-spin" />
+        ) : (
+          <CheckIcon className="size-3 shrink-0" />
+        )}
+        <span className="font-medium">
+          {streaming ? t("aiChat.streaming") : t("aiChat.thinkingDone")}
+        </span>
+      </button>
+      {!collapsed && (
+        <div
+          ref={bodyRef}
+          className="px-2 pb-1.5 pt-0.5 max-h-24 overflow-y-auto whitespace-pre-wrap break-words text-amber-900/80 dark:text-amber-100/70 leading-6"
+        >
+          {reasoning}
+        </div>
       )}
     </div>
   );
@@ -332,21 +393,32 @@ export function AiChatMessages({ messages }: AiChatMessagesProps) {
               >
                 {isUser ? (
                   renderUserContent(msg.content)
-                ) : typeof msg.content === "string" && msg.content ? (
-                  <div className="break-words">
-                    <MemoViewContext.Provider value={STUB_MEMO_VIEW_CONTEXT}>
-                      <MemoMarkdownRenderer
-                        content={msg.content}
-                        resolvedMentionUsernames={new Set()}
+                ) : (
+                  <>
+                    {/* 思考过程框（有 reasoning 内容时显示） */}
+                    {typeof msg.reasoning === "string" && msg.reasoning.length > 0 && (
+                      <ThinkingBox
+                        reasoning={msg.reasoning}
+                        streaming={!!msg.streaming}
                       />
-                    </MemoViewContext.Provider>
-                    {msg.streaming && (
-                      <span className="inline-block w-1 h-4 ml-0.5 bg-current animate-pulse" />
                     )}
-                  </div>
-                ) : msg.streaming ? (
-                  <span className="text-muted-foreground text-xs">思考中...</span>
-                ) : null}
+                    {typeof msg.content === "string" && msg.content ? (
+                      <div className="break-words">
+                        <MemoViewContext.Provider value={STUB_MEMO_VIEW_CONTEXT}>
+                          <MemoMarkdownRenderer
+                            content={msg.content}
+                            resolvedMentionUsernames={new Set()}
+                          />
+                        </MemoViewContext.Provider>
+                        {msg.streaming && (
+                          <span className="inline-block w-1 h-4 ml-0.5 bg-current animate-pulse" />
+                        )}
+                      </div>
+                    ) : msg.streaming && !(typeof msg.reasoning === "string" && msg.reasoning.length > 0) ? (
+                      <span className="text-muted-foreground text-xs">思考中...</span>
+                    ) : null}
+                  </>
+                )}
               </div>
               {showCopyButton && <CopyMarkdownButton text={msg.content as string} />}
             </div>

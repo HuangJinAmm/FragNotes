@@ -53,6 +53,8 @@ export interface ChatMessage {
   id: string;
   role: "user" | "assistant" | "tool";
   content: string | ContentPart[];
+  /** 助手消息的思考/推理过程内容（DeepSeek reasoning_content 等） */
+  reasoning?: string;
   /** 助手消息流式中的标记 */
   streaming?: boolean;
   /** tool 消息的展示标记 */
@@ -104,6 +106,11 @@ export interface WireMessage {
 
 /// Tauri 事件 payload
 export interface ChunkPayload {
+  run_id: number;
+  text: string;
+}
+
+export interface ReasoningPayload {
   run_id: number;
   text: string;
 }

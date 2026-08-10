@@ -75,6 +75,13 @@ struct ChunkPayload {
     text: String,
 }
 
+/// 流式思考/推理内容事件 payload
+#[derive(Debug, Clone, Serialize)]
+struct ReasoningPayload {
+    run_id: u32,
+    text: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
 struct ToolPayload {
     run_id: u32,
@@ -244,12 +251,22 @@ fn agent_loop(
         // 读取 SSE 流
         let reader = response.into_reader();
         let chunk_app = app.clone();
-        let (content, tool_calls) = match read_sse_stream(reader, |delta| {
-            let _ = chunk_app.emit("ai:chunk", ChunkPayload {
-                run_id,
-                text: delta.to_string(),
-            });
-        }) {
+        let reasoning_app = app.clone();
+        let (content, tool_calls) = match read_sse_stream(
+            reader,
+            |delta| {
+                let _ = chunk_app.emit("ai:chunk", ChunkPayload {
+                    run_id,
+                    text: delta.to_string(),
+                });
+            },
+            |reasoning| {
+                let _ = reasoning_app.emit("ai:reasoning", ReasoningPayload {
+                    run_id,
+                    text: reasoning.to_string(),
+                });
+            },
+        ) {
             Ok(r) => r,
             Err(e) => {
                 let _ = app.emit("ai:error", ErrorPayload {
