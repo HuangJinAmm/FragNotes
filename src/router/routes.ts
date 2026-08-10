@@ -6,6 +6,7 @@ export const ROUTES = {
   SETTING: "/setting",
   DISCOVER: "/discover",
   REVIEW: "/review",
+  KNOWLEDGE_GRAPH: "/knowledge-graph",
   WORKSPACE_PICKER: "/workspace-picker",
 } as const;
 

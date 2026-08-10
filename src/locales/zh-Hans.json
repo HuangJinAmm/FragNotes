@@ -1,4 +1,17 @@
 {
+  "kg": {
+    "nav-title": "知识图谱",
+    "new-node": "新建节点",
+    "reset-layout": "重置布局",
+    "select-node-prompt": "选择一个节点查看详情",
+    "related-memos": "相关笔记",
+    "no-related-memos": "暂无相关笔记，尝试为节点添加标签",
+    "delete-confirm": "确定删除节点「{{name}}」吗？关联的边和笔记关联将被自动清理。",
+    "memo-sidebar-section": "知识图谱节点",
+    "memo-sidebar-auto": "自动匹配",
+    "memo-sidebar-manual": "手动关联",
+    "memo-sidebar-link": "关联节点"
+  },
   "aiChat": {
     "title": "AI 助手",
     "open": "打开 AI 聊天",

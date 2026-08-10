@@ -1,4 +1,4 @@
-import { BookOpenIcon, CompassIcon, LibraryIcon, PaperclipIcon } from "lucide-react";
+import { BookOpenIcon, CompassIcon, LibraryIcon, PaperclipIcon, Share2Icon } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { NavLink } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
@@ -77,8 +77,15 @@ const Navigation = (props: Props) => {
     badge: dueCount > 0 ? dueCount : undefined,
   };
 
+  const kgNavLink: NavLinkItem = {
+    id: "header-knowledge-graph",
+    path: Routes.KNOWLEDGE_GRAPH,
+    title: t("kg.nav-title"),
+    icon: <Share2Icon className="w-6 h-auto shrink-0" />,
+  };
+
   // 本地单用户应用：主导航包含 home、attachments、discover 和 review
-  const primaryNavLinks: NavLinkItem[] = [homeNavLink, attachmentsNavLink, discoverNavLink, reviewNavLink];
+  const primaryNavLinks: NavLinkItem[] = [homeNavLink, attachmentsNavLink, discoverNavLink, reviewNavLink, kgNavLink];
 
   return (
     <header className={cn("w-full h-full overflow-auto flex flex-col justify-between items-start gap-4", className)}>

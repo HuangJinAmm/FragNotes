@@ -33,6 +33,7 @@ const NotFound = lazyWithReload(() => import("@/pages/NotFound"));
 const Attachments = lazyWithReload(() => import("@/pages/Attachments"));
 const Setting = lazyWithReload(() => import("@/pages/Setting"));
 const WorkspacePicker = lazyWithReload(() => import("@/pages/WorkspacePicker"));
+const KnowledgeGraph = lazyWithReload(() => import("@/pages/KnowledgeGraph"));
 
 export const Routes = ROUTES;
 export { ROUTES };
@@ -60,6 +61,7 @@ export const routeConfig: RouteObject[] = [
           { path: Routes.SETTING, element: <Setting /> },
           { path: Routes.DISCOVER, element: <Discover /> },
           { path: Routes.REVIEW, element: <Review /> },
+          { path: Routes.KNOWLEDGE_GRAPH, element: <KnowledgeGraph /> },
           { path: Routes.WORKSPACE_PICKER, element: <WorkspacePicker /> },
           { path: "review/:deckId", element: <Review /> },
           { path: "review/:deckId/study", element: <Review /> },

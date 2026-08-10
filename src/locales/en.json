@@ -1,4 +1,17 @@
 {
+  "kg": {
+    "nav-title": "Knowledge Graph",
+    "new-node": "New Node",
+    "reset-layout": "Reset Layout",
+    "select-node-prompt": "Select a node to view details",
+    "related-memos": "Related Memos",
+    "no-related-memos": "No related memos. Try adding tags to the node.",
+    "delete-confirm": "Delete node \"{{name}}\"? Related edges and memo associations will be removed.",
+    "memo-sidebar-section": "Knowledge Graph Nodes",
+    "memo-sidebar-auto": "Auto Matched",
+    "memo-sidebar-manual": "Manually Linked",
+    "memo-sidebar-link": "Link Node"
+  },
   "aiChat": {
     "title": "AI Assistant",
     "open": "Open AI chat",
