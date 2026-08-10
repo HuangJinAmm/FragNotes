@@ -432,6 +432,7 @@ fn main() {
             commands::kg::kg_edge_create,
             commands::kg::kg_edge_update,
             commands::kg::kg_edge_delete,
+            commands::kg::kg_edge_list,
             commands::kg::kg_link_memo,
             commands::kg::kg_unlink_memo,
             commands::kg::kg_list_memo_nodes,

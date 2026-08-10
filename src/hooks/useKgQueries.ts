@@ -26,13 +26,10 @@ export function useKgNodes() {
   });
 }
 
-// 占位实现，Task 7 会补全为调用 kg_edge_list 命令
 export function useKgEdges() {
   return useQuery<KgEdge[]>({
     queryKey: kgKeys.edges(),
-    queryFn: async () => {
-      return [];
-    },
+    queryFn: () => invoke<KgEdge[]>("kg_edge_list", { req: { node_ids: null } }),
   });
 }
 

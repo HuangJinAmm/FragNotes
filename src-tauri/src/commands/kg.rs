@@ -140,6 +140,20 @@ pub fn kg_edge_delete(state: tauri::State<'_, AppState>, id: i32) -> IpcResult<(
     Ok(())
 }
 
+#[derive(Debug, Deserialize, Default)]
+pub struct ListKgEdgesRequest {
+    pub node_ids: Option<Vec<i32>>,
+}
+
+#[tauri::command]
+pub fn kg_edge_list(state: tauri::State<'_, AppState>, req: ListKgEdgesRequest) -> IpcResult<Vec<KgEdge>> {
+    let store = state.store();
+    Ok(store.with_conn(|c| {
+        let node_ids = req.node_ids.unwrap_or_default();
+        kg_edge::list_by_nodes(c, &node_ids)
+    })?)
+}
+
 #[tauri::command]
 pub fn kg_link_memo(state: tauri::State<'_, AppState>, memo_id: i32, node_id: i32) -> IpcResult<()> {
     let store = state.store();

@@ -52,7 +52,8 @@ pub fn delete(conn: &Connection, id: i32) -> CoreResult<()> {
 /// 查询给定节点集涉及的边
 pub fn list_by_nodes(conn: &Connection, node_ids: &[i32]) -> CoreResult<Vec<KgEdge>> {
     if node_ids.is_empty() {
-        return Ok(Vec::new());
+        // 空切片=返回全部
+        return list_all(conn);
     }
     let placeholders: Vec<&str> = node_ids.iter().map(|_| "?").collect();
     let sql = format!(
@@ -107,4 +108,26 @@ fn get(conn: &Connection, id: i32) -> CoreResult<KgEdge> {
         rusqlite::Error::QueryReturnedNoRows => CoreError::NotFound(format!("kg_edge {id}")),
         other => CoreError::Db(other),
     })
+}
+
+/// 查询所有边
+pub fn list_all(conn: &Connection) -> CoreResult<Vec<KgEdge>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, source_id, target_id, type, label, created_ts FROM kg_edge ORDER BY created_ts ASC",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok(KgEdge {
+            id: row.get(0)?,
+            source_id: row.get(1)?,
+            target_id: row.get(2)?,
+            r#type: row.get(3)?,
+            label: row.get(4)?,
+            created_ts: row.get(5)?,
+        })
+    })?;
+    let mut edges = Vec::new();
+    for r in rows {
+        edges.push(r?);
+    }
+    Ok(edges)
 }
