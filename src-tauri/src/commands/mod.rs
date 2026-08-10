@@ -12,6 +12,7 @@ pub mod llm_runner;
 pub mod mcp;
 pub mod memo;
 pub mod memo_relation;
+pub mod kg;
 pub mod reaction;
 pub mod review;
 pub mod setting;
