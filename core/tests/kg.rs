@@ -1,6 +1,10 @@
 use memos_core::*;
 use memos_core::kg_node::{FindKgNode, KgNode, UpsertKgNode};
 use memos_core::kg_edge::KgEdge;
+use memos_core::memo_kg_node;
+use memos_core::memo::CreateMemo;
+use memos_core::types::Visibility;
+use serde_json::json;
 
 fn open_test_store() -> Store {
     Store::open_in_memory().expect("打开内存数据库失败")
@@ -169,4 +173,69 @@ fn kg_edge_unique_and_delete() {
     kg_edge::delete(&conn, edge.id).unwrap();
     let edges = kg_edge::list_by_nodes(&conn, &[n1.id, n2.id]).unwrap();
     assert_eq!(edges.len(), 1);
+}
+
+fn make_memo(conn: &rusqlite::Connection, uid: &str, content: &str) -> i32 {
+    let m = memo::create(conn, &CreateMemo {
+        uid: uid.into(),
+        content: content.into(),
+        visibility: Visibility::Private,
+        pinned: false,
+        payload: json!({}),
+        location: None,
+        parent_id: None,
+    }).unwrap();
+    m.id
+}
+
+#[test]
+fn memo_kg_node_link_and_find() {
+    let store = open_test_store();
+    let conn = store.lock_conn();
+
+    // memo1 含 #rust 标签，memo2 含 #python 标签
+    let m1 = make_memo(&conn, "m1", "学习 #rust 笔记");
+    let m2 = make_memo(&conn, "m2", "#python 入门");
+
+    // node1 关联 rust 标签（自动匹配 m1）
+    let n1 = make_node(&conn, "rust-node");
+    kg_node::set_tags(&conn, n1.id, &["rust".into()]).unwrap();
+
+    // node2 无标签，手动关联 m2
+    let n2 = make_node(&conn, "manual-node");
+    memo_kg_node::link(&conn, m2, n2.id).unwrap();
+
+    // find_memos_by_kg_node(n1) 应返回 [m1]（标签自动匹配）
+    let memos = memo_kg_node::find_memos_by_kg_node(&conn, n1.id).unwrap();
+    assert_eq!(memos, vec![m1]);
+
+    // find_memos_by_kg_node(n2) 应返回 [m2]（手动关联）
+    let memos = memo_kg_node::find_memos_by_kg_node(&conn, n2.id).unwrap();
+    assert_eq!(memos, vec![m2]);
+
+    // list_by_memo(m2) 应返回 [n2.id]
+    let nodes = memo_kg_node::list_by_memo(&conn, m2).unwrap();
+    assert_eq!(nodes, vec![n2.id]);
+
+    // unlink
+    memo_kg_node::unlink(&conn, m2, n2.id).unwrap();
+    let nodes = memo_kg_node::list_by_memo(&conn, m2).unwrap();
+    assert!(nodes.is_empty());
+}
+
+#[test]
+fn memo_kg_node_empty_tags() {
+    let store = open_test_store();
+    let conn = store.lock_conn();
+    let n = make_node(&conn, "empty-node");
+    let m = make_memo(&conn, "m1", "无标签笔记");
+
+    // 节点无标签、无手动关联 → 空结果
+    let memos = memo_kg_node::find_memos_by_kg_node(&conn, n.id).unwrap();
+    assert!(memos.is_empty());
+
+    // 手动关联后返回
+    memo_kg_node::link(&conn, m, n.id).unwrap();
+    let memos = memo_kg_node::find_memos_by_kg_node(&conn, n.id).unwrap();
+    assert_eq!(memos, vec![m]);
 }

@@ -12,7 +12,7 @@ pub mod memo;
 pub mod memo_relation;
 pub mod kg_node;
 pub mod kg_edge;
-// pub mod memo_kg_node;  // Task 4
+pub mod memo_kg_node;
 pub mod migration;
 pub mod config_migration;
 pub mod config_store;
