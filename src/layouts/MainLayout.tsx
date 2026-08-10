@@ -38,8 +38,8 @@ const MainLayout = () => {
     return undefined;
   }, [context, currentUser]);
 
-  const { statistics, tags } = useFilteredMemoStats({ userName: statsUserName, context });
-  const memoExplorerProps = { context, statisticsData: statistics, tagCount: tags };
+  const { statistics, tags, filteredTags } = useFilteredMemoStats({ userName: statsUserName, context });
+  const memoExplorerProps = { context, statisticsData: statistics, tagCount: tags, filteredTagSet: filteredTags };
 
   return (
     <section className="@container w-full min-h-full flex flex-col justify-start items-center md:flex-row md:items-start">

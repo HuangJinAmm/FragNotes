@@ -11,6 +11,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 interface Props {
   readonly?: boolean;
   tagCount: Record<string, number>;
+  /** 筛选激活时从已加载 memo 中提取的标签集合;集合中的标签在列表中优先显示 */
+  filteredTagSet?: Set<string>;
 }
 
 type TagSortMode = "count" | "alpha";
@@ -35,14 +37,33 @@ const TagsSection = (props: Props) => {
   // 扁平模式下展开显示的标签数量(分页累积)
   const [visibleLimit, setVisibleLimit] = useState(FLAT_PAGE_SIZE);
 
-  // 排序后的全部标签:先按名称字典序,再按数量降序(默认);切换为纯字典序
+  // 排序后的全部标签:先按名称字典序,再按数量降序(默认);切换为纯字典序。
+  // 当 filteredTagSet 非空时(筛选激活),将集合中的标签排到前面,其余标签按原序排在后面。
   const allSortedTags = useMemo(() => {
     const entries = Object.entries(props.tagCount);
-    if (sortMode === "alpha") {
-      return entries.sort((a, b) => a[0].localeCompare(b[0]));
+    const sortFn = (a: [string, number], b: [string, number]) => {
+      if (sortMode === "alpha") {
+        return a[0].localeCompare(b[0]);
+      }
+      // count 模式:主排序按数量降序,数量相同时按名称升序
+      const byCount = b[1] - a[1];
+      return byCount !== 0 ? byCount : a[0].localeCompare(b[0]);
+    };
+    const prioritySet = props.filteredTagSet;
+    if (!prioritySet || prioritySet.size === 0) {
+      return entries.sort(sortFn);
     }
-    return entries.sort((a, b) => a[0].localeCompare(b[0])).sort((a, b) => b[1] - a[1]);
-  }, [props.tagCount, sortMode]);
+    const inSet: [string, number][] = [];
+    const outSet: [string, number][] = [];
+    for (const entry of entries) {
+      if (prioritySet.has(entry[0])) {
+        inSet.push(entry);
+      } else {
+        outSet.push(entry);
+      }
+    }
+    return [...inSet.sort(sortFn), ...outSet.sort(sortFn)];
+  }, [props.tagCount, sortMode, props.filteredTagSet]);
 
   // 应用搜索过滤
   const filteredTags = useMemo(() => {
@@ -134,7 +155,7 @@ const TagsSection = (props: Props) => {
             {hasFilter ? t("tag.no-tag-found") : null}
           </div>
         ) : treeMode ? (
-          <TagTree tagAmounts={filteredTags} expandSubTags={!!treeAutoExpand} />
+          <TagTree tagAmounts={filteredTags} expandSubTags={!!treeAutoExpand} priorityTags={props.filteredTagSet} />
         ) : (
           <>
             <div className="w-full flex flex-row justify-start items-center relative flex-wrap gap-x-2 gap-y-1.5">

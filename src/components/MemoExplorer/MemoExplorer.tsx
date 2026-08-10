@@ -22,6 +22,7 @@ interface Props {
   features?: MemoExplorerFeatures;
   statisticsData: StatisticsData;
   tagCount: Record<string, number>;
+  filteredTagSet?: Set<string>;
 }
 
 const getDefaultFeatures = (context: MemoExplorerContext): MemoExplorerFeatures => {
@@ -59,7 +60,7 @@ const getDefaultFeatures = (context: MemoExplorerContext): MemoExplorerFeatures 
 };
 
 const MemoExplorer = (props: Props) => {
-  const { className, context = "home", features: featureOverrides = {}, statisticsData, tagCount } = props;
+  const { className, context = "home", features: featureOverrides = {}, statisticsData, tagCount, filteredTagSet } = props;
   const currentUser = useCurrentUser();
 
   // Merge default features with overrides
@@ -79,7 +80,7 @@ const MemoExplorer = (props: Props) => {
       <div className="mt-1 px-1 w-full">
         {features.statistics && <StatisticsView statisticsData={statisticsData} />}
         {features.shortcuts && currentUser && <ShortcutsSection />}
-        {features.tags && <TagsSection readonly={context === "explore"} tagCount={tagCount} />}
+        {features.tags && <TagsSection readonly={context === "explore"} tagCount={tagCount} filteredTagSet={filteredTagSet} />}
         {features.tags && <FiltersSection />}
       </div>
     </aside>

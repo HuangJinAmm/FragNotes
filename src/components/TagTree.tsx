@@ -13,12 +13,14 @@ interface Tag {
 interface Props {
   tagAmounts: [tag: string, amount: number][];
   expandSubTags: boolean;
+  /** 筛选激活时优先显示的标签集合;根节点本身或其任意后代路径命中时,该根节点排到前面 */
+  priorityTags?: Set<string>;
 }
 
 /// 树模式根节点分页大小,避免一次渲染过多根级标签
 const TREE_ROOT_PAGE_SIZE = 50;
 
-const TagTree = ({ tagAmounts: rawTagAmounts, expandSubTags }: Props) => {
+const TagTree = ({ tagAmounts: rawTagAmounts, expandSubTags, priorityTags }: Props) => {
   const t = useTranslate();
   const [tags, setTags] = useState<Tag[]>([]);
   const [rootLimit, setRootLimit] = useState(TREE_ROOT_PAGE_SIZE);
@@ -70,9 +72,25 @@ const TagTree = ({ tagAmounts: rawTagAmounts, expandSubTags }: Props) => {
       }
     }
 
-    setTags(root.subTags as Tag[]);
+    // 筛选激活时,将命中 priorityTags 的根节点(自身或后代路径命中)排到前面
+    let rootTags = root.subTags as Tag[];
+    if (priorityTags && priorityTags.size > 0 && rootTags.length > 0) {
+      const isPriority = (tag: Tag): boolean => {
+        if (priorityTags.has(tag.text)) return true;
+        const prefix = `${tag.text}/`;
+        for (const t of priorityTags) {
+          if (t.startsWith(prefix)) return true;
+        }
+        return false;
+      };
+      const prioritized = rootTags.filter(isPriority);
+      const rest = rootTags.filter((t) => !isPriority(t));
+      rootTags = [...prioritized, ...rest];
+    }
+
+    setTags(rootTags);
     setRootLimit(TREE_ROOT_PAGE_SIZE);
-  }, [rawTagAmounts]);
+  }, [rawTagAmounts, priorityTags]);
 
   const visibleRootTags = tags.slice(0, rootLimit);
   const remainingCount = tags.length - rootLimit;
