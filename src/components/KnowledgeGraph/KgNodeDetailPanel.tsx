@@ -1,6 +1,8 @@
-import { HashIcon, PencilIcon, Trash2Icon } from "lucide-react";
+import { ExternalLinkIcon, HashIcon, PencilIcon, Trash2Icon } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useDeleteKgNode, useKgNodes } from "@/hooks/useKgQueries";
+import { stringifyFilters } from "@/contexts/MemoFilterContext";
 import { useTranslate } from "@/utils/i18n";
 import KgMemoListPanel from "./KgMemoListPanel";
 
@@ -11,10 +13,17 @@ interface Props {
 
 export default function KgNodeDetailPanel({ nodeId, onEditNode }: Props) {
   const t = useTranslate() as (key: string, params?: Record<string, unknown>) => string;
+  const navigate = useNavigate();
   const { data: nodes = [] } = useKgNodes();
   const deleteNode = useDeleteKgNode();
 
   const node = nodeId != null ? nodes.find((n) => n.id === nodeId) : undefined;
+
+  const handleViewMemos = () => {
+    if (!node || node.tags.length === 0) return;
+    const filter = stringifyFilters(node.tags.map((tag) => ({ factor: "tagSearch" as const, value: tag })));
+    navigate(`/?filter=${filter}`);
+  };
 
   if (!node) {
     return (
@@ -60,6 +69,10 @@ export default function KgNodeDetailPanel({ nodeId, onEditNode }: Props) {
               </span>
             ))}
           </div>
+          <Button size="sm" variant="outline" className="w-full" onClick={handleViewMemos}>
+            <ExternalLinkIcon className="mr-1.5 h-3.5 w-3.5" />
+            {t("kg.view-tag-memos")}
+          </Button>
         </div>
       )}
 

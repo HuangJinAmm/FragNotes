@@ -14,7 +14,8 @@
     "graph-select-prompt": "Please select or create a graph",
     "graph-delete-confirm": "Delete graph \"{{name}}\"? All nodes and associations will be removed.",
     "graph-edit": "Edit Graph",
-    "graph-new": "New Graph"
+    "graph-new": "New Graph",
+    "view-tag-memos": "View Tagged Memos"
   },
   "aiChat": {
     "title": "AI Assistant",

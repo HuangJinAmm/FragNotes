@@ -14,7 +14,8 @@
     "graph-select-prompt": "请选择或创建一个图谱",
     "graph-delete-confirm": "确定删除图谱「{{name}}」吗？所有节点和关联将被删除。",
     "graph-edit": "编辑图谱",
-    "graph-new": "新建图谱"
+    "graph-new": "新建图谱",
+    "view-tag-memos": "查看标签笔记"
   },
   "aiChat": {
     "title": "AI 助手",
