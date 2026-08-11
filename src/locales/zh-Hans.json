@@ -10,7 +10,11 @@
     "memo-sidebar-section": "知识图谱节点",
     "memo-sidebar-auto": "自动匹配",
     "memo-sidebar-manual": "手动关联",
-    "memo-sidebar-link": "关联节点"
+    "memo-sidebar-link": "关联节点",
+    "graph-select-prompt": "请选择或创建一个图谱",
+    "graph-delete-confirm": "确定删除图谱「{{name}}」吗？所有节点和关联将被删除。",
+    "graph-edit": "编辑图谱",
+    "graph-new": "新建图谱"
   },
   "aiChat": {
     "title": "AI 助手",

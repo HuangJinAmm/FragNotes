@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
   useCreateKgEdge,
@@ -16,7 +16,10 @@ import KgNodeEditDialog from "./KgNodeEditDialog";
 import KgToolbar from "./KgToolbar";
 
 export default function KnowledgeGraphPage() {
+  const params = useParams();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const graphId = params.graphId ? Number(params.graphId) : null;
   const initialSelect = searchParams.get("select");
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(
     initialSelect ? Number(initialSelect) : null,
@@ -27,13 +30,18 @@ export default function KnowledgeGraphPage() {
   // "连接到"模式：源节点 id；null 表示非连接模式
   const [connectSourceId, setConnectSourceId] = useState<number | null>(null);
 
-  const { data: nodes = [] } = useKgNodes();
+  const { data: nodes = [] } = useKgNodes(graphId ?? undefined);
   const createNode = useCreateKgNode();
   const createEdge = useCreateKgEdge();
   const deleteNode = useDeleteKgNode();
   const setTags = useSetKgNodeTags();
 
+  const handleSelectGraph = (id: number) => {
+    navigate(`/knowledge-graph/${id}`);
+  };
+
   const handleCreateNode = () => {
+    if (graphId == null) return;
     setEditNodeId(null);
     setCreateParentId(null);
     setDialogOpen(true);
@@ -183,9 +191,20 @@ export default function KnowledgeGraphPage() {
       })()
     : null;
 
+  if (graphId == null) {
+    return (
+      <div className="flex h-svh w-full flex-col">
+        <KgToolbar graphId={null} onCreateNode={handleCreateNode} onSelectGraph={handleSelectGraph} />
+        <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
+          请选择或创建一个图谱
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-svh w-full flex-col">
-      <KgToolbar onCreateNode={handleCreateNode} />
+      <KgToolbar graphId={graphId} onCreateNode={handleCreateNode} onSelectGraph={handleSelectGraph} />
       {connectBanner && (
         <div className="border-b border-primary/30 bg-primary/10 px-3 py-1.5 text-xs text-primary">
           {connectBanner}
@@ -194,6 +213,7 @@ export default function KnowledgeGraphPage() {
       <div className="flex min-h-0 flex-1">
         <div className="min-w-0 flex-1">
           <KgCanvas
+            graphId={graphId}
             selectedNodeId={selectedNodeId}
             onSelectNode={setSelectedNodeId}
             onRequestEditNode={handleEditNode}
@@ -210,6 +230,7 @@ export default function KnowledgeGraphPage() {
         onOpenChange={setDialogOpen}
         editNodeId={editNodeId}
         defaultParentId={createParentId}
+        graphId={graphId}
       />
     </div>
   );

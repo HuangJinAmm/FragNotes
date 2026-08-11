@@ -129,7 +129,7 @@ const MemoDetailSidebar = ({ memo, className, onShareImageOpen }: Props) => {
               <button
                 key={node.id}
                 type="button"
-                onClick={() => navigate(`/knowledge-graph?select=${node.id}`)}
+                onClick={() => navigate(`/knowledge-graph/${node.graph_id}?select=${node.id}`)}
                 className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md border border-border/60 bg-muted/60 text-sm text-muted-foreground hover:bg-muted hover:text-foreground/80 transition-colors"
               >
                 <Link2Icon className="w-3 h-3 opacity-50" />

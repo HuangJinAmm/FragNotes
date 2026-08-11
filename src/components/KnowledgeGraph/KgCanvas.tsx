@@ -26,6 +26,7 @@ import KgNodeCard, { type KgNodeData, type KgNodeAction } from "./KgNodeCard";
 import KgEdgeWithLabel from "./KgEdgeWithLabel";
 
 interface Props {
+  graphId: number;
   selectedNodeId: number | null;
   onSelectNode: (id: number | null) => void;
   onRequestEditNode: (id: number) => void;
@@ -39,13 +40,14 @@ const nodeTypes = { kgNode: KgNodeCard };
 const edgeTypes = { kgEdge: KgEdgeWithLabel };
 
 function KgCanvasInner({
+  graphId,
   selectedNodeId,
   onSelectNode,
   onRequestEditNode,
   onNodeAction,
   connectSourceId = null,
 }: Props) {
-  const { data: nodes = [] } = useKgNodes();
+  const { data: nodes = [] } = useKgNodes(graphId);
   const { data: edges = [] } = useKgEdges();
   const setPos = useSetKgNodePosition();
   const setCollapsed = useSetKgNodeCollapsed();

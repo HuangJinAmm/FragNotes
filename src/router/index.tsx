@@ -62,6 +62,7 @@ export const routeConfig: RouteObject[] = [
           { path: Routes.DISCOVER, element: <Discover /> },
           { path: Routes.REVIEW, element: <Review /> },
           { path: Routes.KNOWLEDGE_GRAPH, element: <KnowledgeGraph /> },
+          { path: "knowledge-graph/:graphId", element: <KnowledgeGraph /> },
           { path: Routes.WORKSPACE_PICKER, element: <WorkspacePicker /> },
           { path: "review/:deckId", element: <Review /> },
           { path: "review/:deckId/study", element: <Review /> },

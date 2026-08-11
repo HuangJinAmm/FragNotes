@@ -10,7 +10,11 @@
     "memo-sidebar-section": "Knowledge Graph Nodes",
     "memo-sidebar-auto": "Auto Matched",
     "memo-sidebar-manual": "Manually Linked",
-    "memo-sidebar-link": "Link Node"
+    "memo-sidebar-link": "Link Node",
+    "graph-select-prompt": "Please select or create a graph",
+    "graph-delete-confirm": "Delete graph \"{{name}}\"? All nodes and associations will be removed.",
+    "graph-edit": "Edit Graph",
+    "graph-new": "New Graph"
   },
   "aiChat": {
     "title": "AI Assistant",

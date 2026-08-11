@@ -16,9 +16,10 @@ interface Props {
   /** 传入节点 id 表示编辑；null/undefined 表示新建 */
   editNodeId?: number | null;
   defaultParentId?: number | null;
+  graphId: number;
 }
 
-export default function KgNodeEditDialog({ open, onOpenChange, editNodeId, defaultParentId }: Props) {
+export default function KgNodeEditDialog({ open, onOpenChange, editNodeId, defaultParentId, graphId }: Props) {
   const { data: nodes = [] } = useKgNodes();
   const createNode = useCreateKgNode();
   const updateNode = useUpdateKgNode();
@@ -58,7 +59,7 @@ export default function KgNodeEditDialog({ open, onOpenChange, editNodeId, defau
     const editingNode = editNodeId != null ? nodes.find((n) => n.id === editNodeId) : undefined;
     const req: UpsertKgNodeRequest = {
       uid: editingNode?.uid ?? generateUUID(),
-      graph_id: editingNode?.graph_id ?? 1,
+      graph_id: editingNode?.graph_id ?? graphId,
       name: name.trim(),
       description,
       color,
@@ -89,7 +90,7 @@ export default function KgNodeEditDialog({ open, onOpenChange, editNodeId, defau
   };
 
   // 可选父节点：排除自身
-  const candidateParents = nodes.filter((n) => n.id !== editNodeId);
+  const candidateParents = nodes.filter((n) => n.id !== editNodeId && n.graph_id === graphId);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
