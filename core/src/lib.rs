@@ -10,6 +10,7 @@ pub mod error;
 pub mod markdown;
 pub mod memo;
 pub mod memo_relation;
+pub mod kg_graph;
 pub mod kg_node;
 pub mod kg_edge;
 pub mod memo_kg_node;

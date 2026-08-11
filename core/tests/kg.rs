@@ -239,3 +239,70 @@ fn memo_kg_node_empty_tags() {
     let memos = memo_kg_node::find_memos_by_kg_node(&conn, n.id).unwrap();
     assert_eq!(memos, vec![m]);
 }
+
+// ========== kg_graph 测试 ==========
+
+fn make_graph(conn: &rusqlite::Connection, name: &str) -> memos_core::kg_graph::KgGraph {
+    memos_core::kg_graph::create(conn, &memos_core::kg_graph::UpsertKgGraph {
+        uid: format!("graph-{}", name),
+        name: name.to_string(),
+        description: String::new(),
+        color: String::new(),
+        icon: String::new(),
+    })
+    .expect("创建图谱失败")
+}
+
+#[test]
+fn kg_graph_create_and_get() {
+    let store = open_test_store();
+    let conn = store.lock_conn();
+    let g = make_graph(&conn, "我的图谱");
+    assert_eq!(g.name, "我的图谱");
+    assert_eq!(g.uid, "graph-我的图谱");
+    assert!(g.description.is_empty());
+
+    let got = memos_core::kg_graph::get(&conn, g.id).unwrap();
+    assert_eq!(got.id, g.id);
+    assert_eq!(got.name, "我的图谱");
+}
+
+#[test]
+fn kg_graph_update() {
+    let store = open_test_store();
+    let conn = store.lock_conn();
+    let g = make_graph(&conn, "图谱1");
+
+    let updated = memos_core::kg_graph::update(&conn, g.id, &memos_core::kg_graph::UpsertKgGraph {
+        uid: "graph-图谱1".into(),
+        name: "图谱2".into(),
+        description: "描述".into(),
+        color: "blue".into(),
+        icon: "StarIcon".into(),
+    }).unwrap();
+    assert_eq!(updated.name, "图谱2");
+    assert_eq!(updated.description, "描述");
+    assert_eq!(updated.color, "blue");
+    assert_eq!(updated.icon, "StarIcon");
+}
+
+#[test]
+fn kg_graph_list() {
+    let store = open_test_store();
+    let conn = store.lock_conn();
+    let initial = memos_core::kg_graph::list(&conn).unwrap();
+    assert!(!initial.is_empty(), "默认图谱应存在");
+
+    make_graph(&conn, "g1");
+    make_graph(&conn, "g2");
+    let list = memos_core::kg_graph::list(&conn).unwrap();
+    assert!(list.len() >= 3, "应有默认 + g1 + g2");
+}
+
+#[test]
+fn kg_graph_delete_not_found() {
+    let store = open_test_store();
+    let conn = store.lock_conn();
+    let err = memos_core::kg_graph::delete(&conn, 99999);
+    assert!(err.is_err());
+}
