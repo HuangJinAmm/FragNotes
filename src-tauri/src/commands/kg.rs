@@ -3,6 +3,7 @@
 use crate::error::IpcResult;
 use crate::state::AppState;
 use memos_core::kg_edge::{self, KgEdge};
+use memos_core::kg_graph::{self, KgGraph, UpsertKgGraph};
 use memos_core::kg_node::{self, FindKgNode, KgNode, UpsertKgNode};
 use memos_core::memo;
 use memos_core::memo_kg_node;
@@ -11,6 +12,7 @@ use serde::Deserialize;
 #[derive(Debug, Deserialize)]
 pub struct UpsertKgNodeRequest {
     pub uid: String,
+    pub graph_id: i32,
     pub name: String,
     #[serde(default)]
     pub description: String,
@@ -29,6 +31,7 @@ impl From<UpsertKgNodeRequest> for UpsertKgNode {
     fn from(r: UpsertKgNodeRequest) -> Self {
         UpsertKgNode {
             uid: r.uid,
+            graph_id: r.graph_id,
             name: r.name,
             description: r.description,
             color: r.color,
@@ -43,6 +46,7 @@ impl From<UpsertKgNodeRequest> for UpsertKgNode {
 
 #[derive(Debug, Deserialize, Default)]
 pub struct ListKgNodesRequest {
+    pub graph_id: Option<i32>,
     /// None=全部; Some(None)=根节点; Some(Some(id))=指定父的子节点
     pub parent_id: Option<Option<i32>>,
     pub id_list: Option<Vec<i32>>,
@@ -94,6 +98,7 @@ pub fn kg_node_delete(state: tauri::State<'_, AppState>, id: i32) -> IpcResult<(
 pub fn kg_node_list(state: tauri::State<'_, AppState>, req: ListKgNodesRequest) -> IpcResult<Vec<KgNode>> {
     let store = state.store();
     let find = FindKgNode {
+        graph_id: req.graph_id,
         parent_id: req.parent_id,
         id_list: req.id_list.unwrap_or_default(),
     };
@@ -138,6 +143,61 @@ pub fn kg_edge_delete(state: tauri::State<'_, AppState>, id: i32) -> IpcResult<(
     let store = state.store();
     store.with_conn(|c| kg_edge::delete(c, id))?;
     Ok(())
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpsertKgGraphRequest {
+    pub uid: String,
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub color: String,
+    #[serde(default)]
+    pub icon: String,
+}
+
+impl From<UpsertKgGraphRequest> for UpsertKgGraph {
+    fn from(r: UpsertKgGraphRequest) -> Self {
+        UpsertKgGraph {
+            uid: r.uid,
+            name: r.name,
+            description: r.description,
+            color: r.color,
+            icon: r.icon,
+        }
+    }
+}
+
+#[tauri::command]
+pub fn kg_graph_create(state: tauri::State<'_, AppState>, req: UpsertKgGraphRequest) -> IpcResult<KgGraph> {
+    let store = state.store();
+    Ok(store.with_conn(|c| kg_graph::create(c, &req.into()))?)
+}
+
+#[tauri::command]
+pub fn kg_graph_update(state: tauri::State<'_, AppState>, id: i32, req: UpsertKgGraphRequest) -> IpcResult<KgGraph> {
+    let store = state.store();
+    Ok(store.with_conn(|c| kg_graph::update(c, id, &req.into()))?)
+}
+
+#[tauri::command]
+pub fn kg_graph_delete(state: tauri::State<'_, AppState>, id: i32) -> IpcResult<()> {
+    let store = state.store();
+    store.with_conn(|c| kg_graph::delete(c, id))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn kg_graph_get(state: tauri::State<'_, AppState>, id: i32) -> IpcResult<KgGraph> {
+    let store = state.store();
+    Ok(store.with_conn(|c| kg_graph::get(c, id))?)
+}
+
+#[tauri::command]
+pub fn kg_graph_list(state: tauri::State<'_, AppState>) -> IpcResult<Vec<KgGraph>> {
+    let store = state.store();
+    Ok(store.with_conn(|c| kg_graph::list(c))?)
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -195,7 +255,7 @@ pub fn kg_list_memo_nodes(state: tauri::State<'_, AppState>, memo_uid: String) -
         if node_ids.is_empty() {
             return Ok(Vec::new());
         }
-        kg_node::list(c, &FindKgNode { parent_id: None, id_list: node_ids })
+        kg_node::list(c, &FindKgNode { graph_id: None, parent_id: None, id_list: node_ids })
     })?)
 }
 

@@ -422,6 +422,11 @@ fn main() {
             commands::memo_relation::list_memo_relations,
             commands::memo_relation::delete_memo_relation,
             // knowledge graph
+            commands::kg::kg_graph_create,
+            commands::kg::kg_graph_update,
+            commands::kg::kg_graph_delete,
+            commands::kg::kg_graph_get,
+            commands::kg::kg_graph_list,
             commands::kg::kg_node_create,
             commands::kg::kg_node_update,
             commands::kg::kg_node_delete,
