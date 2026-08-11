@@ -31,6 +31,7 @@ export default function KgEdgeWithLabel({
 
   return (
     <>
+      {/* 主线 */}
       <BaseEdge
         id={id}
         path={edgePath}
@@ -40,6 +41,19 @@ export default function KgEdgeWithLabel({
           strokeDasharray: style.dashed ? "6 4" : undefined,
         }}
       />
+      {/* 选中时叠加流动光效 */}
+      {selected && (
+        <BaseEdge
+          id={`${id}-flow`}
+          path={edgePath}
+          style={{
+            stroke: style.stroke,
+            strokeWidth: 2.5,
+            opacity: 0.7,
+          }}
+          className="kg-edge-flow"
+        />
+      )}
       {(edgeData.label || edgeData.type) && (
         <EdgeLabelRenderer>
           <div

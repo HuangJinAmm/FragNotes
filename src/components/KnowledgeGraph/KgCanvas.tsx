@@ -1,12 +1,16 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ReactFlow,
   ReactFlowProvider,
   Background,
   Controls,
   type Connection,
+  type Edge,
+  type Node,
   type NodeMouseHandler,
   type OnNodeDrag,
+  useEdgesState,
+  useNodesState,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import {
@@ -18,19 +22,29 @@ import {
 } from "@/hooks/useKgQueries";
 import { useDebouncedEffect } from "@/hooks";
 import { layoutGraph, toFlowEdges, toFlowNodes } from "./layout";
-import KgNodeCard, { type KgNodeData } from "./KgNodeCard";
+import KgNodeCard, { type KgNodeData, type KgNodeAction } from "./KgNodeCard";
 import KgEdgeWithLabel from "./KgEdgeWithLabel";
 
 interface Props {
   selectedNodeId: number | null;
   onSelectNode: (id: number | null) => void;
   onRequestEditNode: (id: number) => void;
+  /** 处理节点快捷操作（除 edit/toggle-collapse 外，由父组件统一处理） */
+  onNodeAction?: (action: KgNodeAction, nodeId: number) => void;
+  /** 当前处于"连接到"模式的源节点 id；为 null 表示非连接模式 */
+  connectSourceId?: number | null;
 }
 
 const nodeTypes = { kgNode: KgNodeCard };
 const edgeTypes = { kgEdge: KgEdgeWithLabel };
 
-function KgCanvasInner({ selectedNodeId, onSelectNode, onRequestEditNode }: Props) {
+function KgCanvasInner({
+  selectedNodeId,
+  onSelectNode,
+  onRequestEditNode,
+  onNodeAction,
+  connectSourceId = null,
+}: Props) {
   const { data: nodes = [] } = useKgNodes();
   const { data: edges = [] } = useKgEdges();
   const setPos = useSetKgNodePosition();
@@ -74,21 +88,62 @@ function KgCanvasInner({ selectedNodeId, onSelectNode, onRequestEditNode }: Prop
     return layoutGraph(visibleNodes, edges);
   }, [visibleNodes, edges]);
 
-  const flowNodes = useMemo(() => {
-    return toFlowNodes(visibleNodes, positions).map((n) => {
-      const data = n.data as KgNodeData;
-      return {
-        ...n,
-        data: { ...data, hasChildren: hasChildrenMap.get(data.id) ?? false },
-        selected: selectedNodeId === data.id,
-      };
-    });
-  }, [visibleNodes, positions, hasChildrenMap, selectedNodeId]);
+  // 用 useNodesState 让 React Flow 实时管理拖拽位置（核心：拖拽时 onNodesChange 实时更新 state）
+  const [flowNodes, setFlowNodes, onNodesChange] = useNodesState<Node>([]);
+  const [flowEdges, setFlowEdges, onEdgesChange] = useEdgesState<Edge>([]);
 
-  const flowEdges = useMemo(() => {
+  // 缓存上次同步时的后端 position key，用于判断后端 position 是否变化（区分"用户拖拽"与"后端重置/同步"）
+  const prevBackendPosKeysRef = useRef<Map<string, string>>(new Map());
+
+  // 后端数据变化时智能同步到 flowNodes：
+  // - 新节点：用 dagre 计算的位置
+  // - 已有节点且后端 position 未变：保留现有 position（可能是用户拖拽中的，避免覆盖）
+  // - 已有节点但后端 position 变了（重置布局/拖拽保存完成/多端同步）：用计算的新位置
+  useEffect(() => {
+    const computed = toFlowNodes(visibleNodes, positions);
+    const newBackendPosKeys = new Map<string, string>();
+    // 构建后端 position key
+    visibleNodes.forEach((vn) => {
+      newBackendPosKeys.set(
+        String(vn.id),
+        `${vn.pos_x ?? "null"}:${vn.pos_y ?? "null"}`,
+      );
+    });
+
+    setFlowNodes((prev) => {
+      const prevMap = new Map(prev.map((n) => [n.id, n]));
+      const next = computed.map((n) => {
+        const data = n.data as KgNodeData;
+        const existing = prevMap.get(n.id);
+        const backendPosKey = newBackendPosKeys.get(n.id);
+        const prevBackendPosKey = prevBackendPosKeysRef.current.get(n.id);
+        const backendPosChanged = backendPosKey !== prevBackendPosKey;
+        // 后端 position 变了或节点是新的 → 用计算位置；否则保留现有（用户拖拽中）
+        const position = !existing || backendPosChanged ? n.position : existing.position;
+        return {
+          ...n,
+          data: {
+            ...data,
+            hasChildren: hasChildrenMap.get(data.id) ?? false,
+            connectMode: connectSourceId === data.id,
+          },
+          position,
+          selected: selectedNodeId === data.id,
+        };
+      });
+      return next;
+    });
+
+    prevBackendPosKeysRef.current = newBackendPosKeys;
+  }, [visibleNodes, positions, hasChildrenMap, selectedNodeId, connectSourceId, setFlowNodes]);
+
+  // 同步 edges
+  useEffect(() => {
     const visibleIds = new Set(visibleNodes.map((n) => n.id));
-    return toFlowEdges(edges.filter((e) => visibleIds.has(e.source_id) && visibleIds.has(e.target_id)));
-  }, [edges, visibleNodes]);
+    setFlowEdges(
+      toFlowEdges(edges.filter((e) => visibleIds.has(e.source_id) && visibleIds.has(e.target_id))),
+    );
+  }, [edges, visibleNodes, setFlowEdges]);
 
   // 拖拽后保存位置（防抖）
   const [pendingPositions, setPendingPositions] = useState<Map<string, { x: number; y: number }>>(new Map());
@@ -96,7 +151,17 @@ function KgCanvasInner({ selectedNodeId, onSelectNode, onRequestEditNode }: Prop
     () => {
       if (pendingPositions.size === 0) return;
       for (const [id, pos] of pendingPositions) {
-        setPos.mutate({ id: Number(id), x: pos.x, y: pos.y });
+        setPos.mutate(
+          { id: Number(id), x: pos.x, y: pos.y },
+          {
+            onSuccess: () => {
+              // 通知对应节点闪烁绿点
+              window.dispatchEvent(
+                new CustomEvent("kg-position-saved", { detail: { id: Number(id) } }),
+              );
+            },
+          },
+        );
       }
       setPendingPositions(new Map());
     },
@@ -114,14 +179,25 @@ function KgCanvasInner({ selectedNodeId, onSelectNode, onRequestEditNode }: Prop
 
   const onNodeClick: NodeMouseHandler = useCallback(
     (_evt, node) => {
-      onSelectNode(Number(node.id));
+      const id = Number(node.id);
+      // 连接模式下：点击非源节点 → 创建边
+      if (connectSourceId != null && connectSourceId !== id) {
+        onNodeAction?.("connect", id);
+        return;
+      }
+      onSelectNode(id);
     },
-    [onSelectNode],
+    [onSelectNode, connectSourceId, onNodeAction],
   );
 
   const onPaneClick = useCallback(() => {
+    // 连接模式下点击空白 → 取消连接模式
+    if (connectSourceId != null) {
+      onNodeAction?.("connect", -1);
+      return;
+    }
     onSelectNode(null);
-  }, [onSelectNode]);
+  }, [onSelectNode, connectSourceId, onNodeAction]);
 
   const onNodeDoubleClick: NodeMouseHandler = useCallback(
     (_evt, node) => {
@@ -143,15 +219,26 @@ function KgCanvasInner({ selectedNodeId, onSelectNode, onRequestEditNode }: Prop
     [createEdge],
   );
 
-  // 折叠/展开按钮（通过自定义事件让 KgNodeCard 触发折叠）
+  // 监听节点快捷操作事件（kg-node-action）
   useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent<{ id: number; collapsed: boolean }>).detail;
-      setCollapsed.mutate(detail);
+    const actionHandler = (e: Event) => {
+      const detail = (e as CustomEvent<{ action: KgNodeAction; id: number }>).detail;
+      if (detail.action === "edit") {
+        onRequestEditNode(detail.id);
+      } else if (detail.action === "toggle-collapse") {
+        // 折叠在 Canvas 内部处理（需要查找当前 collapsed 状态）
+        const node = nodes.find((n) => n.id === detail.id);
+        if (node) {
+          setCollapsed.mutate({ id: detail.id, collapsed: !node.collapsed });
+        }
+      } else {
+        // add-child / connect / duplicate / delete 交给父组件
+        onNodeAction?.(detail.action, detail.id);
+      }
     };
-    window.addEventListener("kg-toggle-collapse", handler as EventListener);
-    return () => window.removeEventListener("kg-toggle-collapse", handler as EventListener);
-  }, [setCollapsed]);
+    window.addEventListener("kg-node-action", actionHandler as EventListener);
+    return () => window.removeEventListener("kg-node-action", actionHandler as EventListener);
+  }, [onRequestEditNode, onNodeAction, nodes, setCollapsed]);
 
   return (
     <ReactFlow
@@ -159,13 +246,15 @@ function KgCanvasInner({ selectedNodeId, onSelectNode, onRequestEditNode }: Prop
       edges={flowEdges}
       nodeTypes={nodeTypes}
       edgeTypes={edgeTypes}
+      onNodesChange={onNodesChange}
+      onEdgesChange={onEdgesChange}
       onNodeClick={onNodeClick}
       onNodeDoubleClick={onNodeDoubleClick}
       onNodeDragStop={onNodeDragStop}
       onPaneClick={onPaneClick}
       onConnect={onConnect}
       fitView
-      className="bg-muted/10"
+      className={connectSourceId != null ? "bg-muted/10 cursor-crosshair" : "bg-muted/10"}
     >
       <Background gap={16} size={1} />
       <Controls />

@@ -71,15 +71,19 @@ export function useSetKgNodeTags() {
 }
 
 export function useSetKgNodePosition() {
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: (req: SetKgPositionRequest) => invoke<void>("kg_node_set_position", { req }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: kgKeys.nodes() }),
   });
 }
 
 export function useSetKgNodeCollapsed() {
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, collapsed }: { id: number; collapsed: boolean }) =>
       invoke<void>("kg_node_set_collapsed", { id, collapsed }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: kgKeys.nodes() }),
   });
 }
 

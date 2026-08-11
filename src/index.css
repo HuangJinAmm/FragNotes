@@ -39,3 +39,67 @@
     border-radius: 2px;
   }
 }
+
+/* ===== 知识图谱动画 ===== */
+@keyframes kg-node-enter {
+  0% {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes kg-edge-flow {
+  0% {
+    stroke-dashoffset: 24;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes kg-success-pulse {
+  0%,
+  100% {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1.2);
+  }
+  70% {
+    opacity: 0.8;
+    transform: scale(1);
+  }
+}
+
+@keyframes kg-connect-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in oklch, var(--primary) 50%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 6px color-mix(in oklch, var(--primary) 0%, transparent);
+  }
+}
+
+.kg-node-enter {
+  animation: kg-node-enter 200ms ease-out;
+}
+
+.kg-edge-flow {
+  stroke-dasharray: 6 6;
+  animation: kg-edge-flow 1.2s linear infinite;
+}
+
+.kg-success-pulse {
+  animation: kg-success-pulse 1.2s ease-out forwards;
+}
+
+.kg-connect-mode {
+  animation: kg-connect-pulse 1.5s ease-in-out infinite;
+}
