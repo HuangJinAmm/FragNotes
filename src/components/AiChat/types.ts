@@ -53,6 +53,8 @@ export interface ChatMessage {
   id: string;
   role: "user" | "assistant" | "tool";
   content: string | ContentPart[];
+  /** 助手消息的思考/推理过程内容（DeepSeek reasoning_content 等） */
+  reasoning?: string;
   /** 助手消息流式中的标记 */
   streaming?: boolean;
   /** tool 消息的展示标记 */
@@ -78,6 +80,22 @@ export interface ToolCallInfo {
   args: unknown;
 }
 
+/// 任务清单步骤状态
+export type PlanTodoStatus = "pending" | "in_progress" | "completed";
+
+/// 任务清单单条步骤
+export interface PlanTodo {
+  content: string;
+  status: PlanTodoStatus;
+}
+
+/// update_plan 工具返回结果
+export interface PlanResult {
+  todos: PlanTodo[];
+  total: number;
+  completed: number;
+}
+
 /// 发送给后端的消息格式
 export interface WireMessage {
   role: string;
@@ -88,6 +106,11 @@ export interface WireMessage {
 
 /// Tauri 事件 payload
 export interface ChunkPayload {
+  run_id: number;
+  text: string;
+}
+
+export interface ReasoningPayload {
   run_id: number;
   text: string;
 }

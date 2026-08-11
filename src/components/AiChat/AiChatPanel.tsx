@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import {
   BotIcon,
   HistoryIcon,
@@ -8,6 +9,8 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslate } from "@/utils/i18n";
 import { cn } from "@/lib/utils";
+import { AI_CHAT_ACTIVE_PROVIDER_STORAGE_KEY } from "./AiChatProviderPicker";
+import type { ProviderConfig } from "./types";
 import { registerAiChat } from "./aiChatController";
 import { AiChatComposer } from "./AiChatComposer";
 import { AiChatMessages } from "./AiChatMessages";
@@ -65,6 +68,33 @@ export function AiChatPanel() {
   // 解决"添加 provider 后下拉不显示,需关闭面板重开"的问题。
   const [providerRefreshKey, setProviderRefreshKey] = useState(0);
   const [position, setPosition] = useState<Position>(() => loadPosition());
+
+  // 挂载时即加载 provider 列表并初始化 providerId（从 localStorage 恢复或选第一个）。
+  // 这样即使面板从未打开过，AI 快捷操作也能直接使用已选 provider 发送消息。
+  // refreshKey 变化时（设置保存后）重新拉取列表，保持与 Picker 同步。
+  useEffect(() => {
+    let cancelled = false;
+    invoke<ProviderConfig[]>("list_providers")
+      .then((list) => {
+        if (cancelled) return;
+        const saved = localStorage.getItem(AI_CHAT_ACTIVE_PROVIDER_STORAGE_KEY);
+        if (saved && list.some((p) => p.id === saved)) {
+          setProviderId(saved);
+        } else if (list.length > 0) {
+          const first = list[0].id;
+          localStorage.setItem(AI_CHAT_ACTIVE_PROVIDER_STORAGE_KEY, first);
+          setProviderId(first);
+        } else {
+          setProviderId(null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setProviderId(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [providerRefreshKey]);
   const {
     messages,
     isStreaming,
@@ -283,6 +313,7 @@ export function AiChatPanel() {
               onAbort={abort}
               providerSlot={
                 <AiChatProviderPicker
+                  value={providerId}
                   onProviderChange={setProviderId}
                   refreshKey={providerRefreshKey}
                 />

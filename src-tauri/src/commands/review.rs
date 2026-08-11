@@ -714,15 +714,19 @@ fn run_card_agent(
 
         let reader = response.into_reader();
         let chunk_app = app.clone();
-        let (content, tool_calls) = read_sse_stream(reader, |delta| {
-            let _ = chunk_app.emit(
-                "review:chunk",
-                ReviewChunk {
-                    run_id,
-                    text: delta.to_string(),
-                },
-            );
-        })
+        let (content, tool_calls) = read_sse_stream(
+            reader,
+            |delta| {
+                let _ = chunk_app.emit(
+                    "review:chunk",
+                    ReviewChunk {
+                        run_id,
+                        text: delta.to_string(),
+                    },
+                );
+            },
+            |_| {},
+        )
         .map_err(|e| format!("SSE 读取失败: {e}"))?;
 
         if state.shutdown.load(Ordering::SeqCst) {

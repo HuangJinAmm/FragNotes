@@ -21,6 +21,8 @@ pub struct ToolCallAccumulator {
 pub struct SseEvent {
     /// 文本内容增量（可能为空）
     pub content_delta: Option<String>,
+    /// 思考/推理内容增量（DeepSeek reasoning_content 或 reasoning 字段，可能为空）
+    pub reasoning_delta: Option<String>,
     /// tool_calls 增量（按 index）
     pub tool_call_delta: Option<ToolCallDelta>,
     /// finish_reason（流结束时出现）
@@ -46,6 +48,7 @@ pub fn parse_sse_line(line: &str) -> Option<SseEvent> {
     if data == "[DONE]" {
         return Some(SseEvent {
             content_delta: None,
+            reasoning_delta: None,
             tool_call_delta: None,
             finish_reason: Some("[DONE]".to_string()),
         });
@@ -61,6 +64,13 @@ pub fn parse_sse_line(line: &str) -> Option<SseEvent> {
 
     let content_delta = delta
         .get("content")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    // 思考/推理内容：优先 reasoning_content（DeepSeek），其次 reasoning（部分 provider）
+    let reasoning_delta = delta
+        .get("reasoning_content")
+        .or_else(|| delta.get("reasoning"))
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
 
@@ -92,6 +102,7 @@ pub fn parse_sse_line(line: &str) -> Option<SseEvent> {
 
     Some(SseEvent {
         content_delta,
+        reasoning_delta,
         tool_call_delta,
         finish_reason,
     })
@@ -99,9 +110,11 @@ pub fn parse_sse_line(line: &str) -> Option<SseEvent> {
 
 /// 从 reader 读取完整 SSE 流，累积 tool_calls，返回 (完整文本, tool_calls)
 /// 每读到 content_delta 时调用 on_chunk 回调（用于流式推送）
-pub fn read_sse_stream<R: Read, F: FnMut(&str)>(
+/// 每读到 reasoning_delta 时调用 on_reasoning 回调（用于推送思考过程，不累积到返回值）
+pub fn read_sse_stream<R: Read, F: FnMut(&str), G: FnMut(&str)>(
     reader: R,
     mut on_chunk: F,
+    mut on_reasoning: G,
 ) -> std::io::Result<(String, Vec<ToolCallAccumulator>)> {
     let buf_reader = BufReader::new(reader);
     let mut full_content = String::new();
@@ -116,6 +129,9 @@ pub fn read_sse_stream<R: Read, F: FnMut(&str)>(
             if let Some(delta) = &event.content_delta {
                 full_content.push_str(delta);
                 on_chunk(delta);
+            }
+            if let Some(reasoning) = &event.reasoning_delta {
+                on_reasoning(reasoning);
             }
             if let Some(tc_delta) = &event.tool_call_delta {
                 let idx = tc_delta.index as usize;
@@ -154,7 +170,23 @@ mod tests {
         let line = r#"data: {"choices":[{"delta":{"content":"hello"}}]}"#;
         let event = parse_sse_line(line).unwrap();
         assert_eq!(event.content_delta.as_deref(), Some("hello"));
+        assert!(event.reasoning_delta.is_none());
         assert!(event.tool_call_delta.is_none());
+    }
+
+    #[test]
+    fn test_parse_sse_line_reasoning_content() {
+        let line = r#"data: {"choices":[{"delta":{"reasoning_content":"思考中"}}]}"#;
+        let event = parse_sse_line(line).unwrap();
+        assert_eq!(event.reasoning_delta.as_deref(), Some("思考中"));
+        assert!(event.content_delta.is_none());
+    }
+
+    #[test]
+    fn test_parse_sse_line_reasoning() {
+        let line = r#"data: {"choices":[{"delta":{"reasoning":"thinking"}}]}"#;
+        let event = parse_sse_line(line).unwrap();
+        assert_eq!(event.reasoning_delta.as_deref(), Some("thinking"));
     }
 
     #[test]
@@ -194,7 +226,7 @@ mod tests {
         let input = "data: {\"choices\":[{\"delta\":{\"content\":\"Hi\"}}]}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\" there\"}}]}\n\ndata: [DONE]\n\n";
         let cursor = Cursor::new(input);
         let mut chunks = Vec::new();
-        let (content, tool_calls) = read_sse_stream(cursor, |c| chunks.push(c.to_string())).unwrap();
+        let (content, tool_calls) = read_sse_stream(cursor, |c| chunks.push(c.to_string()), |_| {}).unwrap();
         assert_eq!(content, "Hi there");
         assert_eq!(chunks, vec!["Hi", " there"]);
         assert!(tool_calls.is_empty());
@@ -204,7 +236,7 @@ mod tests {
     fn test_read_sse_stream_tool_calls_accumulated() {
         let input = "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"function\":{\"name\":\"list_memos\",\"arguments\":\"\"}}]}}]}\n\ndata: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"{\\\"query\\\":\\\"Rust\\\"}\"}}]}}]}\n\ndata: [DONE]\n\n";
         let cursor = Cursor::new(input);
-        let (content, tool_calls) = read_sse_stream(cursor, |_| {}).unwrap();
+        let (content, tool_calls) = read_sse_stream(cursor, |_| {}, |_| {}).unwrap();
         assert_eq!(content, "");
         assert_eq!(tool_calls.len(), 1);
         assert_eq!(tool_calls[0].id, "call_1");
@@ -216,7 +248,7 @@ mod tests {
     fn test_read_sse_stream_mixed_content_and_tool_calls() {
         let input = "data: {\"choices\":[{\"delta\":{\"content\":\"让我查一下\"}}]}\n\ndata: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"function\":{\"name\":\"list_tags\",\"arguments\":\"{}\"}}]}}]}\n\ndata: [DONE]\n\n";
         let cursor = Cursor::new(input);
-        let (content, tool_calls) = read_sse_stream(cursor, |_| {}).unwrap();
+        let (content, tool_calls) = read_sse_stream(cursor, |_| {}, |_| {}).unwrap();
         assert_eq!(content, "让我查一下");
         assert_eq!(tool_calls.len(), 1);
         assert_eq!(tool_calls[0].name, "list_tags");

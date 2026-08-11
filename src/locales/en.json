@@ -26,6 +26,10 @@
     "toolCall": "Tool call",
     "streaming": "Thinking...",
     "error": "Error",
+    "thinking": "Reasoning",
+    "thinkingDone": "Thought",
+    "thinkingCollapse": "Collapse",
+    "thinkingExpand": "Expand",
     "attachImage": "Attach image",
     "imageTooLarge": "Image size must not exceed 5MB",
     "tooManyImages": "Maximum 4 images per message",
@@ -48,6 +52,10 @@
     "messageCount": "{{count}} messages",
     "skill": {
       "loaded": "Loaded Skill: {{name}}"
+    },
+    "plan": {
+      "title": "Task Plan",
+      "empty": "No tasks yet"
     },
     "tool": {
       "confirm-title": "Tool Call Confirmation",

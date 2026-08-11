@@ -56,11 +56,13 @@ const MemoActionMenu = (props: MemoActionMenuProps) => {
   const hasContent = memo.content.trim().length > 0;
 
   // AI 动作：构造预设 prompt 并打开 AI 聊天面板
+  // memo.name 格式为 "memos/{uid}"，提取 uid 注入 prompt，供 AI 调用 update_memo 等工具时使用
+  const memoUid = memo.name.split("/").pop() ?? memo.name;
   const buildPrompt = (instruction: string) => {
     const content = memo.content.length > MAX_AI_PROMPT_CONTENT
       ? memo.content.slice(0, MAX_AI_PROMPT_CONTENT) + "\n...(内容已截断)"
       : memo.content;
-    return `${instruction}\n\n${content}`;
+    return `${instruction}\n\n${content}\n\n（当前笔记 UID: ${memoUid}，如需更新此笔记内容，可调用 update_memo 工具并传入该 uid。）`;
   };
 
   const handleAiSummarize = () => {
@@ -73,9 +75,7 @@ const MemoActionMenu = (props: MemoActionMenuProps) => {
     openAiChatWithPrompt(buildPrompt(t("memo.ai-actions.polish-prompt")));
   };
   const handleAiGenerateCards = () => {
-    // memo.name 格式为 "memos/{uid}"，提取 uid 供 AI 调用 create_review_cards 工具时使用
-    const uid = memo.name.split("/").pop() ?? memo.name;
-    const prompt = t("memo.ai-actions.cards-prompt", { uid });
+    const prompt = t("memo.ai-actions.cards-prompt", { uid: memoUid });
     openAiChatWithPrompt(buildPrompt(prompt));
   };
 

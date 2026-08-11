@@ -72,6 +72,7 @@ pub const BUILTIN_TOOL_NAMES: &[&str] = &[
     "create_review_cards",
     "load_skill",
     "officecli",
+    "update_plan",
 ];
 
 fn validate_name(name: &str) -> CoreResult<()> {

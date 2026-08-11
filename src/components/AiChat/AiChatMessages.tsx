@@ -1,5 +1,16 @@
 import copy from "copy-to-clipboard";
-import { BotIcon, CheckIcon, CopyIcon, UserIcon } from "lucide-react";
+import {
+  BotIcon,
+  CheckIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  CopyIcon,
+  ListTodoIcon,
+  LoaderIcon,
+  CircleIcon,
+  CheckCircle2Icon,
+  UserIcon,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { MemoMarkdownRenderer } from "@/components/MemoContent/MemoMarkdownRenderer";
@@ -12,7 +23,7 @@ import {
   PERMISSION_LABELS,
   type ToolPermission,
 } from "@/types/tool";
-import type { ChatMessage, ContentPart } from "./types";
+import type { ChatMessage, ContentPart, PlanResult, PlanTodoStatus } from "./types";
 
 interface AiChatMessagesProps {
   messages: ChatMessage[];
@@ -64,6 +75,124 @@ function extractToolName(content: string | ContentPart[]): string | undefined {
   const rest = content.slice(3);
   const parenIdx = rest.indexOf("(");
   return parenIdx === -1 ? rest : rest.slice(0, parenIdx);
+}
+
+/// 任务清单卡片：渲染 update_plan 工具返回的 todo-list 及进度
+function PlanCard({ result }: { result: PlanResult | null }) {
+  const t = useTranslate();
+  const todos = result?.todos ?? [];
+  const total = result?.total ?? todos.length;
+  const completed = result?.completed ?? todos.filter((td) => td.status === "completed").length;
+  const allDone = total > 0 && completed === total;
+
+  const statusIcon = (status: PlanTodoStatus) => {
+    if (status === "completed") {
+      return <CheckCircle2Icon className="size-3.5 shrink-0 text-emerald-500" />;
+    }
+    if (status === "in_progress") {
+      return <LoaderIcon className="size-3.5 shrink-0 text-blue-500 animate-spin" />;
+    }
+    return <CircleIcon className="size-3.5 shrink-0 text-muted-foreground" />;
+  };
+
+  return (
+    <div className="my-1 rounded border border-violet-200 bg-violet-50 dark:border-violet-900 dark:bg-violet-950/30 p-2 text-xs">
+      <div className="mb-1.5 flex items-center gap-2">
+        <ListTodoIcon className="size-3.5 text-violet-600 dark:text-violet-400" />
+        <span className="font-medium text-violet-700 dark:text-violet-300">
+          {t("aiChat.plan.title")}
+        </span>
+        <span
+          className={cn(
+            "ml-auto rounded px-1.5 py-0.5 text-[10px]",
+            allDone
+              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300"
+              : "bg-violet-100 text-violet-700 dark:bg-violet-900/50 dark:text-violet-300",
+          )}
+        >
+          {completed}/{total}
+        </span>
+      </div>
+      {todos.length > 0 ? (
+        <ol className="space-y-1">
+          {todos.map((td, i) => (
+            <li
+              key={i}
+              className={cn(
+                "flex items-start gap-1.5",
+                td.status === "completed" && "text-muted-foreground line-through",
+                td.status === "in_progress" && "text-foreground",
+              )}
+            >
+              {statusIcon(td.status)}
+              <span className="break-words">{td.content}</span>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className="text-muted-foreground italic">{t("aiChat.plan.empty")}</p>
+      )}
+    </div>
+  );
+}
+
+/// 思考过程展示框：
+/// - 最多显示 4 行（max-h-24，leading-6 → 约 4 行）
+/// - 流式过程中自动滚动到底部，显示最新思考内容
+/// - 思考完成后可滚动查看全部内容
+/// - 可通过点击 header 折叠/展开
+function ThinkingBox({ reasoning, streaming }: { reasoning: string; streaming: boolean }) {
+  const t = useTranslate();
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const [collapsed, setCollapsed] = useState(false);
+
+  // 流式过程中自动滚动到底部，显示最新思考内容
+  useEffect(() => {
+    if (streaming && !collapsed && bodyRef.current) {
+      bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
+    }
+  }, [reasoning, streaming, collapsed]);
+
+  // 思考刚完成时（streaming 从 true → false），滚动到顶部便于从头查看
+  const prevStreamingRef = useRef(streaming);
+  useEffect(() => {
+    if (prevStreamingRef.current && !streaming && !collapsed && bodyRef.current) {
+      bodyRef.current.scrollTop = 0;
+    }
+    prevStreamingRef.current = streaming;
+  }, [streaming, collapsed]);
+
+  return (
+    <div className="mb-1.5 rounded border border-amber-200 bg-amber-50/60 dark:border-amber-900/50 dark:bg-amber-950/20 text-xs overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setCollapsed((c) => !c)}
+        className="flex w-full items-center gap-1.5 px-2 py-1 text-amber-700 dark:text-amber-300 hover:bg-amber-100/50 dark:hover:bg-amber-900/30 transition-colors"
+      >
+        {collapsed ? (
+          <ChevronRightIcon className="size-3 shrink-0" />
+        ) : (
+          <ChevronDownIcon className="size-3 shrink-0" />
+        )}
+        {streaming ? (
+          <LoaderIcon className="size-3 shrink-0 animate-spin" />
+        ) : (
+          <CheckIcon className="size-3 shrink-0" />
+        )}
+        <span className="font-medium">
+          {streaming ? t("aiChat.streaming") : t("aiChat.thinkingDone")}
+        </span>
+      </button>
+      {!collapsed && (
+        <div
+          ref={bodyRef}
+          className="px-2 pb-1.5 pt-0.5 max-h-24 overflow-y-auto whitespace-pre-wrap break-words text-amber-900/80 dark:text-amber-100/70 leading-6"
+        >
+          {reasoning}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function AiChatMessages({ messages }: AiChatMessagesProps) {
@@ -121,6 +250,12 @@ export function AiChatMessages({ messages }: AiChatMessagesProps) {
           const argsJson = formatArgsJson(msg.toolArgs);
           // 工具显示名：优先 toolName，其次从 content 解析
           const displayName = msg.toolName ?? extractToolName(msg.content) ?? "tool";
+
+          // update_plan：渲染任务清单进度卡片
+          if (msg.toolName === "update_plan") {
+            const result = msg.toolResult as PlanResult | null;
+            return <PlanCard key={msg.id} result={result} />;
+          }
 
           // load_skill：保持原有特殊渲染（蓝色卡片 + skill body）
           if (msg.toolName === "load_skill") {
@@ -258,21 +393,32 @@ export function AiChatMessages({ messages }: AiChatMessagesProps) {
               >
                 {isUser ? (
                   renderUserContent(msg.content)
-                ) : typeof msg.content === "string" && msg.content ? (
-                  <div className="break-words">
-                    <MemoViewContext.Provider value={STUB_MEMO_VIEW_CONTEXT}>
-                      <MemoMarkdownRenderer
-                        content={msg.content}
-                        resolvedMentionUsernames={new Set()}
+                ) : (
+                  <>
+                    {/* 思考过程框（有 reasoning 内容时显示） */}
+                    {typeof msg.reasoning === "string" && msg.reasoning.length > 0 && (
+                      <ThinkingBox
+                        reasoning={msg.reasoning}
+                        streaming={!!msg.streaming}
                       />
-                    </MemoViewContext.Provider>
-                    {msg.streaming && (
-                      <span className="inline-block w-1 h-4 ml-0.5 bg-current animate-pulse" />
                     )}
-                  </div>
-                ) : msg.streaming ? (
-                  <span className="text-muted-foreground text-xs">思考中...</span>
-                ) : null}
+                    {typeof msg.content === "string" && msg.content ? (
+                      <div className="break-words">
+                        <MemoViewContext.Provider value={STUB_MEMO_VIEW_CONTEXT}>
+                          <MemoMarkdownRenderer
+                            content={msg.content}
+                            resolvedMentionUsernames={new Set()}
+                          />
+                        </MemoViewContext.Provider>
+                        {msg.streaming && (
+                          <span className="inline-block w-1 h-4 ml-0.5 bg-current animate-pulse" />
+                        )}
+                      </div>
+                    ) : msg.streaming && !(typeof msg.reasoning === "string" && msg.reasoning.length > 0) ? (
+                      <span className="text-muted-foreground text-xs">思考中...</span>
+                    ) : null}
+                  </>
+                )}
               </div>
               {showCopyButton && <CopyMarkdownButton text={msg.content as string} />}
             </div>

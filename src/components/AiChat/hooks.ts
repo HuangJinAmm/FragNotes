@@ -61,6 +61,9 @@ function invalidateQueriesForTool(queryClient: QueryClient, toolName: string, re
     case "load_skill":
       // skill 加载不修改 memo 数据，无需失效缓存
       break;
+    case "update_plan":
+      // 任务清单更新不修改 memo 数据，无需失效缓存
+      break;
     default:
       // 用户工具：不直接修改 memo 数据（与 load_skill 同样 no-op）
       // 内置工具名之外的工具调用都走这里
@@ -104,6 +107,23 @@ export function useAiChat({ providerId }: UseAiChatOptions) {
             for (let i = next.length - 1; i >= 0; i--) {
               if (next[i].role === "assistant" && next[i].streaming) {
                 next[i] = { ...next[i], content: next[i].content + e.payload.text };
+                break;
+              }
+            }
+            return next;
+          });
+        }),
+      );
+
+      unlisteners.push(
+        await listen<{ run_id: number; text: string }>("ai:reasoning", (e) => {
+          if (e.payload.run_id !== currentRunId.current) return;
+          setMessages((prev) => {
+            const next = [...prev];
+            for (let i = next.length - 1; i >= 0; i--) {
+              if (next[i].role === "assistant" && next[i].streaming) {
+                const prevReasoning = typeof next[i].reasoning === "string" ? next[i].reasoning : "";
+                next[i] = { ...next[i], reasoning: prevReasoning + e.payload.text };
                 break;
               }
             }
