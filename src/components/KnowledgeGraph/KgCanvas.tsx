@@ -141,11 +141,13 @@ function KgCanvasInner({
       pos_x: number | null;
       pos_y: number | null;
       kind?: "memo" | "more";
+      [key: string]: unknown;
     }> = [];
 
-    // 知识节点
+    // 知识节点：保留完整原始数据（KgNode 的所有字段），供 KgNodeCard 使用
     visibleNodes.forEach((n) => {
       result.push({
+        ...n,
         id: String(n.id),
         parent_id: n.parent_id != null ? String(n.parent_id) : null,
         pos_x: n.pos_x,
@@ -217,6 +219,7 @@ function KgCanvasInner({
         // 知识节点
         if (!n.id.startsWith("memo:") && !n.id.startsWith("more:")) {
           const data = n.data as KgNodeData;
+          const numericId = Number(data.id);
           const existing = prevMap.get(n.id);
           const backendPosKey = newBackendPosKeys.get(n.id);
           const prevBackendPosKey = prevBackendPosKeysRef.current.get(n.id);
@@ -226,11 +229,12 @@ function KgCanvasInner({
             ...n,
             data: {
               ...data,
-              hasChildren: hasChildrenMap.get(data.id) ?? false,
-              connectMode: connectSourceId === data.id,
+              id: numericId,
+              hasChildren: hasChildrenMap.get(numericId) ?? false,
+              connectMode: connectSourceId === numericId,
             },
             position,
-            selected: selectedNodeId === data.id,
+            selected: selectedNodeId === numericId,
           };
         }
         // 笔记虚拟节点
