@@ -3,26 +3,67 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   CreateKgEdgeRequest,
   KgEdge,
+  KgGraph,
   KgNode,
   ListKgNodesRequest,
   SetKgPositionRequest,
   UpdateKgEdgeRequest,
+  UpsertKgGraphRequest,
   UpsertKgNodeRequest,
 } from "@/types/kg";
 import type { Memo } from "@/types/proto/api/v1/memo_service_pb";
 
 export const kgKeys = {
   all: ["kg"] as const,
+  graphs: () => [...kgKeys.all, "graphs"] as const,
   nodes: () => [...kgKeys.all, "nodes"] as const,
   edges: () => [...kgKeys.all, "edges"] as const,
   nodeMemos: (nodeId: number) => [...kgKeys.all, "nodeMemos", nodeId] as const,
   memoNodes: (memoUid: string) => [...kgKeys.all, "memoNodes", memoUid] as const,
 };
 
-export function useKgNodes() {
+export function useKgGraphs() {
+  return useQuery<KgGraph[]>({
+    queryKey: kgKeys.graphs(),
+    queryFn: () => invoke<KgGraph[]>("kg_graph_list"),
+  });
+}
+
+export function useCreateKgGraph() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (req: UpsertKgGraphRequest) => invoke<KgGraph>("kg_graph_create", { req }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: kgKeys.graphs() }),
+  });
+}
+
+export function useUpdateKgGraph() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, req }: { id: number; req: UpsertKgGraphRequest }) =>
+      invoke<KgGraph>("kg_graph_update", { id, req }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: kgKeys.graphs() }),
+  });
+}
+
+export function useDeleteKgGraph() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => invoke<void>("kg_graph_delete", { id }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: kgKeys.graphs() });
+      qc.invalidateQueries({ queryKey: kgKeys.all });
+    },
+  });
+}
+
+export function useKgNodes(graphId?: number) {
   return useQuery<KgNode[]>({
-    queryKey: kgKeys.nodes(),
-    queryFn: () => invoke<KgNode[]>("kg_node_list", { req: {} as ListKgNodesRequest }),
+    queryKey: [...kgKeys.nodes(), graphId ?? "all"],
+    queryFn: () =>
+      invoke<KgNode[]>("kg_node_list", {
+        req: { graph_id: graphId ?? null } as ListKgNodesRequest,
+      }),
   });
 }
 

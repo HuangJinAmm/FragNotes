@@ -58,6 +58,7 @@ export default function KgNodeEditDialog({ open, onOpenChange, editNodeId, defau
     const editingNode = editNodeId != null ? nodes.find((n) => n.id === editNodeId) : undefined;
     const req: UpsertKgNodeRequest = {
       uid: editingNode?.uid ?? generateUUID(),
+      graph_id: editingNode?.graph_id ?? 1,
       name: name.trim(),
       description,
       color,

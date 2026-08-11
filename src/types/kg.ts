@@ -1,7 +1,27 @@
 // 知识图谱前端类型（与后端 Rust serde 序列化对齐）
 
+export interface KgGraph {
+  id: number;
+  uid: string;
+  name: string;
+  description: string;
+  color: string;
+  icon: string;
+  created_ts: number;
+  updated_ts: number;
+}
+
+export interface UpsertKgGraphRequest {
+  uid: string;
+  name: string;
+  description?: string;
+  color?: string;
+  icon?: string;
+}
+
 export interface KgNode {
   id: number;
+  graph_id: number;
   uid: string;
   name: string;
   description: string;
@@ -27,6 +47,7 @@ export interface KgEdge {
 
 export interface UpsertKgNodeRequest {
   uid: string;
+  graph_id: number;
   name: string;
   description?: string;
   color?: string;
@@ -38,6 +59,7 @@ export interface UpsertKgNodeRequest {
 }
 
 export interface ListKgNodesRequest {
+  graph_id?: number | null;
   parent_id?: number | null | undefined;
   id_list?: number[];
 }

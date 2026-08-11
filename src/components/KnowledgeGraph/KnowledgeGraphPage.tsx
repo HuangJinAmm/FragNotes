@@ -58,6 +58,7 @@ export default function KnowledgeGraphPage() {
       createNode.mutate(
         {
           uid: generateUUID(),
+          graph_id: src.graph_id,
           name: `${src.name} (副本)`,
           description: src.description,
           color: src.color,
