@@ -3,6 +3,7 @@ import { Handle, Position, type NodeProps } from "@xyflow/react";
 import {
   ChevronDownIcon,
   ChevronRightIcon,
+  ExternalLinkIcon,
   HashIcon,
   PencilIcon,
   PlusIcon,
@@ -34,7 +35,8 @@ export type KgNodeAction =
   | "connect"
   | "toggle-collapse"
   | "duplicate"
-  | "delete";
+  | "delete"
+  | "view-memos";
 
 // 用完整类名字符串避免 Tailwind purge
 const colorClassMap: Record<string, string> = {
@@ -95,6 +97,12 @@ export default function KgNodeCard({ data, selected, dragging }: NodeProps) {
     { action: "add-child", icon: PlusIcon, label: "添加子节点" },
     { action: "connect", icon: Share2Icon, label: "连接到" },
     { action: "duplicate", icon: CopyIcon, label: "复制" },
+    {
+      action: "view-memos",
+      icon: ExternalLinkIcon,
+      label: "查看标签笔记",
+      visible: nodeData.tags.length > 0,
+    },
     {
       action: "toggle-collapse",
       icon: nodeData.collapsed ? ChevronRightIcon : ChevronDownIcon,

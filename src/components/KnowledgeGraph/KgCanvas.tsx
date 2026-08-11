@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQueries } from "@tanstack/react-query";
 import {
   ReactFlow,
@@ -24,6 +25,7 @@ import {
   useSetKgNodePosition,
 } from "@/hooks/useKgQueries";
 import { useDebouncedEffect } from "@/hooks";
+import { stringifyFilters } from "@/contexts/MemoFilterContext";
 import { layoutGraph, toFlowEdges, toFlowNodes } from "./layout";
 import KgNodeCard, { type KgNodeData, type KgNodeAction } from "./KgNodeCard";
 import KgMemoNodeCard, { type KgMemoNodeData } from "./KgMemoNodeCard";
@@ -67,6 +69,7 @@ function KgCanvasInner({
   const setPos = useSetKgNodePosition();
   const setCollapsed = useSetKgNodeCollapsed();
   const createEdge = useCreateKgEdge();
+  const navigate = useNavigate();
 
   // 每个节点的笔记显示数量（分页），key = nodeId
   const [memoDisplayCounts, setMemoDisplayCounts] = useState<Map<number, number>>(new Map());
@@ -396,13 +399,19 @@ function KgCanvasInner({
         if (node) {
           setCollapsed.mutate({ id: detail.id, collapsed: !node.collapsed });
         }
+      } else if (detail.action === "view-memos") {
+        const node = nodes.find((n) => n.id === detail.id);
+        if (node && node.tags.length > 0) {
+          const filter = stringifyFilters(node.tags.map((tag) => ({ factor: "tagSearch" as const, value: tag })));
+          navigate(`/?filter=${filter}`);
+        }
       } else {
         onNodeAction?.(detail.action, detail.id);
       }
     };
     window.addEventListener("kg-node-action", actionHandler as EventListener);
     return () => window.removeEventListener("kg-node-action", actionHandler as EventListener);
-  }, [onRequestEditNode, onNodeAction, nodes, setCollapsed]);
+  }, [onRequestEditNode, onNodeAction, nodes, setCollapsed, navigate]);
 
   return (
     <>
