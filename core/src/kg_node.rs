@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KgNode {
     pub id: i32,
+    pub graph_id: i32,
     pub uid: String,
     pub name: String,
     pub description: String,
@@ -26,6 +27,7 @@ pub struct KgNode {
 #[derive(Debug, Clone)]
 pub struct UpsertKgNode {
     pub uid: String,
+    pub graph_id: i32,
     pub name: String,
     pub description: String,
     pub color: String,
@@ -39,6 +41,7 @@ pub struct UpsertKgNode {
 /// 查询过滤
 #[derive(Debug, Clone, Default)]
 pub struct FindKgNode {
+    pub graph_id: Option<i32>,
     /// None=全部; Some(None)=根节点; Some(Some(id))=指定父的子节点
     pub parent_id: Option<Option<i32>>,
     pub id_list: Vec<i32>,
@@ -48,10 +51,11 @@ pub struct FindKgNode {
 pub fn create(conn: &Connection, upsert: &UpsertKgNode) -> CoreResult<KgNode> {
     let now = chrono::Utc::now().timestamp();
     conn.execute(
-        "INSERT INTO kg_node (uid, name, description, color, icon, parent_id, pos_x, pos_y, collapsed, created_ts, updated_ts)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10)",
+        "INSERT INTO kg_node (uid, graph_id, name, description, color, icon, parent_id, pos_x, pos_y, collapsed, created_ts, updated_ts)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11)",
         params![
             upsert.uid,
+            upsert.graph_id,
             upsert.name,
             upsert.description,
             upsert.color,
@@ -73,6 +77,12 @@ pub fn update(conn: &Connection, id: i32, upsert: &UpsertKgNode) -> CoreResult<K
     if let Some(new_parent) = upsert.parent_id {
         if new_parent == id {
             return Err(CoreError::Other("不能将节点的父级设为自身".into()));
+        }
+        // 校验父节点必须属于同一图谱
+        let current_graph = get_graph_id(conn, id)?;
+        let parent_graph = get_graph_id(conn, new_parent)?;
+        if parent_graph != current_graph {
+            return Err(CoreError::Other("父节点必须属于同一图谱".into()));
         }
         if is_descendant(conn, id, new_parent)? {
             return Err(CoreError::Other("不能将节点的父级设为自身或后代".into()));
@@ -113,7 +123,7 @@ pub fn delete(conn: &Connection, id: i32) -> CoreResult<()> {
 /// 查询单个节点
 pub fn get(conn: &Connection, id: i32) -> CoreResult<KgNode> {
     let mut stmt = conn.prepare(
-        "SELECT id, uid, name, description, color, icon, parent_id, pos_x, pos_y, collapsed, created_ts, updated_ts
+        "SELECT id, graph_id, uid, name, description, color, icon, parent_id, pos_x, pos_y, collapsed, created_ts, updated_ts
          FROM kg_node WHERE id=?1",
     )?;
     let mut node: KgNode = stmt.query_row(params![id], map_row)?;
@@ -124,10 +134,15 @@ pub fn get(conn: &Connection, id: i32) -> CoreResult<KgNode> {
 /// 查询列表
 pub fn list(conn: &Connection, find: &FindKgNode) -> CoreResult<Vec<KgNode>> {
     let mut sql = String::from(
-        "SELECT id, uid, name, description, color, icon, parent_id, pos_x, pos_y, collapsed, created_ts, updated_ts
+        "SELECT id, graph_id, uid, name, description, color, icon, parent_id, pos_x, pos_y, collapsed, created_ts, updated_ts
          FROM kg_node WHERE 1=1",
     );
     let mut args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+
+    if let Some(gid) = find.graph_id {
+        sql.push_str(" AND graph_id=?");
+        args.push(Box::new(gid));
+    }
 
     match find.parent_id {
         None => {}
@@ -234,20 +249,30 @@ fn get_parent_id(conn: &Connection, id: i32) -> CoreResult<Option<i32>> {
     Ok(parent.flatten())
 }
 
+fn get_graph_id(conn: &Connection, id: i32) -> CoreResult<i32> {
+    let graph_id: Option<i32> = conn
+        .query_row("SELECT graph_id FROM kg_node WHERE id=?1", params![id], |row| {
+            row.get(0)
+        })
+        .optional()?;
+    graph_id.ok_or_else(|| CoreError::NotFound(format!("kg_node {id}")))
+}
+
 fn map_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<KgNode> {
     Ok(KgNode {
         id: row.get(0)?,
-        uid: row.get(1)?,
-        name: row.get(2)?,
-        description: row.get(3)?,
-        color: row.get(4)?,
-        icon: row.get(5)?,
-        parent_id: row.get(6)?,
-        pos_x: row.get(7)?,
-        pos_y: row.get(8)?,
-        collapsed: row.get::<_, i32>(9)? != 0,
-        created_ts: row.get(10)?,
-        updated_ts: row.get(11)?,
+        graph_id: row.get(1)?,
+        uid: row.get(2)?,
+        name: row.get(3)?,
+        description: row.get(4)?,
+        color: row.get(5)?,
+        icon: row.get(6)?,
+        parent_id: row.get(7)?,
+        pos_x: row.get(8)?,
+        pos_y: row.get(9)?,
+        collapsed: row.get::<_, i32>(10)? != 0,
+        created_ts: row.get(11)?,
+        updated_ts: row.get(12)?,
         tags: Vec::new(),
     })
 }

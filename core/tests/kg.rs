@@ -10,9 +10,10 @@ fn open_test_store() -> Store {
     Store::open_in_memory().expect("打开内存数据库失败")
 }
 
-fn make_node(conn: &rusqlite::Connection, name: &str) -> KgNode {
+fn make_node(conn: &rusqlite::Connection, graph_id: i32, name: &str) -> KgNode {
     kg_node::create(conn, &UpsertKgNode {
         uid: format!("kg-{}", name),
+        graph_id,
         name: name.to_string(),
         description: String::new(),
         color: String::new(),
@@ -29,7 +30,7 @@ fn make_node(conn: &rusqlite::Connection, name: &str) -> KgNode {
 fn kg_node_create() {
     let store = open_test_store();
     let conn = store.lock_conn();
-    let node = make_node(&conn, "root");
+    let node = make_node(&conn, 1, "root");
     assert_eq!(node.name, "root");
     assert_eq!(node.uid, "kg-root");
     assert!(node.parent_id.is_none());
@@ -42,9 +43,10 @@ fn kg_node_create() {
 fn kg_node_update_and_circular_check() {
     let store = open_test_store();
     let conn = store.lock_conn();
-    let parent = make_node(&conn, "parent");
+    let parent = make_node(&conn, 1, "parent");
     let child = kg_node::create(&conn, &UpsertKgNode {
         uid: "kg-child".into(),
+        graph_id: 1,
         name: "child".into(),
         description: String::new(),
         color: String::new(),
@@ -58,6 +60,7 @@ fn kg_node_update_and_circular_check() {
     // 正常更新
     let updated = kg_node::update(&conn, child.id, &UpsertKgNode {
         uid: "kg-child".into(),
+        graph_id: 1,
         name: "child2".into(),
         description: "desc".into(),
         color: "blue".into(),
@@ -75,6 +78,7 @@ fn kg_node_update_and_circular_check() {
     // 循环校验：把 parent 的 parent 设为 child 应失败
     let err = kg_node::update(&conn, parent.id, &UpsertKgNode {
         uid: "kg-parent".into(),
+        graph_id: 1,
         name: "parent".into(),
         description: String::new(),
         color: String::new(),
@@ -91,7 +95,7 @@ fn kg_node_update_and_circular_check() {
 fn kg_node_tags_and_position() {
     let store = open_test_store();
     let conn = store.lock_conn();
-    let node = make_node(&conn, "n1");
+    let node = make_node(&conn, 1, "n1");
 
     // set_tags 全量替换
     kg_node::set_tags(&conn, node.id, &["rust".into(), "tauri".into()]).unwrap();
@@ -119,8 +123,8 @@ fn kg_node_tags_and_position() {
 fn kg_node_delete_cascades() {
     let store = open_test_store();
     let conn = store.lock_conn();
-    let n1 = make_node(&conn, "n1");
-    let _n2 = make_node(&conn, "n2");
+    let n1 = make_node(&conn, 1, "n1");
+    let _n2 = make_node(&conn, 1, "n2");
     kg_node::set_tags(&conn, n1.id, &["t1".into()]).unwrap();
 
     // 删除 n1
@@ -139,8 +143,8 @@ fn kg_node_delete_cascades() {
 fn kg_edge_create_and_list() {
     let store = open_test_store();
     let conn = store.lock_conn();
-    let n1 = make_node(&conn, "n1");
-    let n2 = make_node(&conn, "n2");
+    let n1 = make_node(&conn, 1, "n1");
+    let n2 = make_node(&conn, 1, "n2");
 
     let edge = kg_edge::create(&conn, n1.id, n2.id, "related", "关联").unwrap();
     assert_eq!(edge.source_id, n1.id);
@@ -157,8 +161,8 @@ fn kg_edge_create_and_list() {
 fn kg_edge_unique_and_delete() {
     let store = open_test_store();
     let conn = store.lock_conn();
-    let n1 = make_node(&conn, "n1");
-    let n2 = make_node(&conn, "n2");
+    let n1 = make_node(&conn, 1, "n1");
+    let n2 = make_node(&conn, 1, "n2");
 
     let edge = kg_edge::create(&conn, n1.id, n2.id, "related", "").unwrap();
     // 相同 source/target/type 应冲突
@@ -198,11 +202,11 @@ fn memo_kg_node_link_and_find() {
     let m2 = make_memo(&conn, "m2", "#python 入门");
 
     // node1 关联 rust 标签（自动匹配 m1）
-    let n1 = make_node(&conn, "rust-node");
+    let n1 = make_node(&conn, 1, "rust-node");
     kg_node::set_tags(&conn, n1.id, &["rust".into()]).unwrap();
 
     // node2 无标签，手动关联 m2
-    let n2 = make_node(&conn, "manual-node");
+    let n2 = make_node(&conn, 1, "manual-node");
     memo_kg_node::link(&conn, m2, n2.id).unwrap();
 
     // find_memos_by_kg_node(n1) 应返回 [m1]（标签自动匹配）
@@ -227,7 +231,7 @@ fn memo_kg_node_link_and_find() {
 fn memo_kg_node_empty_tags() {
     let store = open_test_store();
     let conn = store.lock_conn();
-    let n = make_node(&conn, "empty-node");
+    let n = make_node(&conn, 1, "empty-node");
     let m = make_memo(&conn, "m1", "无标签笔记");
 
     // 节点无标签、无手动关联 → 空结果
@@ -305,4 +309,51 @@ fn kg_graph_delete_not_found() {
     let conn = store.lock_conn();
     let err = memos_core::kg_graph::delete(&conn, 99999);
     assert!(err.is_err());
+}
+
+#[test]
+fn kg_node_graph_isolation() {
+    let store = open_test_store();
+    let conn = store.lock_conn();
+
+    // 创建第二个图谱
+    let g2 = make_graph(&conn, "图谱2");
+
+    // 在默认图谱(id=1)和图谱2各创建节点
+    let n1 = make_node(&conn, 1, "default-node");
+    let n2 = make_node(&conn, g2.id, "g2-node");
+
+    // list 按 graph_id 过滤
+    let default_nodes = kg_node::list(&conn, &FindKgNode { graph_id: Some(1), parent_id: None, id_list: vec![] }).unwrap();
+    assert!(default_nodes.iter().any(|n| n.id == n1.id));
+    assert!(!default_nodes.iter().any(|n| n.id == n2.id));
+
+    let g2_nodes = kg_node::list(&conn, &FindKgNode { graph_id: Some(g2.id), parent_id: None, id_list: vec![] }).unwrap();
+    assert!(g2_nodes.iter().any(|n| n.id == n2.id));
+    assert!(!g2_nodes.iter().any(|n| n.id == n1.id));
+}
+
+#[test]
+fn kg_node_cross_graph_parent_rejected() {
+    let store = open_test_store();
+    let conn = store.lock_conn();
+
+    let g2 = make_graph(&conn, "图谱2");
+    let n1 = make_node(&conn, 1, "default-node");
+    let n2 = make_node(&conn, g2.id, "g2-node");
+
+    // 尝试把 n2 的 parent 设为 n1（跨图谱）应失败
+    let err = kg_node::update(&conn, n2.id, &UpsertKgNode {
+        uid: n2.uid.clone(),
+        graph_id: g2.id,
+        name: n2.name.clone(),
+        description: String::new(),
+        color: String::new(),
+        icon: String::new(),
+        parent_id: Some(n1.id),
+        pos_x: None,
+        pos_y: None,
+        collapsed: false,
+    });
+    assert!(err.is_err(), "应拒绝跨图谱父子关系");
 }
