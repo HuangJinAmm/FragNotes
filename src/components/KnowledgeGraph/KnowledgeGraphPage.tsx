@@ -5,9 +5,11 @@ import {
   useCreateKgEdge,
   useCreateKgNode,
   useDeleteKgNode,
+  useKgGraphs,
   useKgNodes,
   useSetKgNodeTags,
 } from "@/hooks/useKgQueries";
+import { useLocalStorage } from "@/hooks";
 import { generateUUID } from "@/utils/uuid";
 import type { KgNodeAction } from "./KgNodeCard";
 import KgCanvas from "./KgCanvas";
@@ -20,6 +22,8 @@ export default function KnowledgeGraphPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const graphId = params.graphId ? Number(params.graphId) : null;
+  const [lastGraphId, setLastGraphId] = useLocalStorage<number | null>("kg-last-graph-id", null);
+  const { data: graphs = [] } = useKgGraphs();
   const initialSelect = searchParams.get("select");
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(
     initialSelect ? Number(initialSelect) : null,
@@ -39,6 +43,20 @@ export default function KnowledgeGraphPage() {
   const handleSelectGraph = (id: number) => {
     navigate(`/knowledge-graph/${id}`);
   };
+
+  // 记忆当前选择的图谱
+  useEffect(() => {
+    if (graphId != null && graphId !== lastGraphId) {
+      setLastGraphId(graphId);
+    }
+  }, [graphId, lastGraphId, setLastGraphId]);
+
+  // 无 graphId 时，自动跳转到上次记忆的图谱（需校验该图谱仍存在）
+  useEffect(() => {
+    if (graphId == null && lastGraphId != null && graphs.some((g) => g.id === lastGraphId)) {
+      navigate(`/knowledge-graph/${lastGraphId}`, { replace: true });
+    }
+  }, [graphId, lastGraphId, graphs, navigate]);
 
   const handleCreateNode = () => {
     if (graphId == null) return;
