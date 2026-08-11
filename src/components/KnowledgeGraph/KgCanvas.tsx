@@ -24,6 +24,12 @@ import { useDebouncedEffect } from "@/hooks";
 import { layoutGraph, toFlowEdges, toFlowNodes } from "./layout";
 import KgNodeCard, { type KgNodeData, type KgNodeAction } from "./KgNodeCard";
 import KgEdgeWithLabel from "./KgEdgeWithLabel";
+import type { KgEdge, KgNode } from "@/types/kg";
+
+// 模块级常量：避免 data 为 undefined 时 `= []` 每次渲染产生新引用，
+// 导致下游 useMemo 链不断重算、useEffect 无限触发 setFlowNodes。
+const EMPTY_NODES: KgNode[] = [];
+const EMPTY_EDGES: KgEdge[] = [];
 
 interface Props {
   graphId: number;
@@ -47,8 +53,8 @@ function KgCanvasInner({
   onNodeAction,
   connectSourceId = null,
 }: Props) {
-  const { data: nodes = [] } = useKgNodes(graphId);
-  const { data: edges = [] } = useKgEdges();
+  const { data: nodes = EMPTY_NODES } = useKgNodes(graphId);
+  const { data: edges = EMPTY_EDGES } = useKgEdges();
   const setPos = useSetKgNodePosition();
   const setCollapsed = useSetKgNodeCollapsed();
   const createEdge = useCreateKgEdge();
