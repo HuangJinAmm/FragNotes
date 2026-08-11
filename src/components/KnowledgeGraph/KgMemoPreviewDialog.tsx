@@ -18,7 +18,7 @@ export default function KgMemoPreviewDialog({ memo, open, onOpenChange }: Props)
 
   if (!memo) return null;
 
-  const memoUid = memo.name.split("/").pop();
+  const memoUid = memo.name?.split("/").pop();
   const date = memo.createTime ? timestampDate(memo.createTime).toLocaleString() : "";
 
   return (

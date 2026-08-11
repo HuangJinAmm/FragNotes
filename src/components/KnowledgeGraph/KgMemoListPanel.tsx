@@ -26,7 +26,7 @@ export default function KgMemoListPanel({ nodeId }: Props) {
         <button
           key={memo.name}
           type="button"
-          onClick={() => navigate(`/memos/${memo.name.split("/").pop()}`)}
+          onClick={() => memo.name && navigate(`/memos/${memo.name.split("/").pop()}`)}
           className="rounded-md border border-border bg-muted/20 p-2 text-left transition-colors hover:bg-muted/40"
         >
           <p className="line-clamp-2 text-xs text-foreground">{memo.content || t("memo.untitled")}</p>

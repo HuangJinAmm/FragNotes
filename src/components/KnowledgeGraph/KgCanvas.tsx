@@ -166,6 +166,7 @@ function KgCanvasInner({
       const visibleMemos = memos.slice(0, displayCount);
 
       visibleMemos.forEach((memo) => {
+        if (!memo?.name) return;
         result.push({
           id: `memo:${memo.name}`,
           parent_id: String(n.id),
@@ -431,7 +432,7 @@ function KgCanvasInner({
 /** 从 nodeMemosMap 中查找指定 uid 的笔记 */
 function findMemo(nodeMemosMap: Map<number, Memo[]>, memoUid: string): Memo | undefined {
   for (const memos of nodeMemosMap.values()) {
-    const found = memos.find((m) => m.name.split("/").pop() === memoUid);
+    const found = memos.find((m) => m?.name?.split("/").pop() === memoUid);
     if (found) return found;
   }
   return undefined;
