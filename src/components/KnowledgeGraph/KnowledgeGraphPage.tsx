@@ -13,7 +13,6 @@ import { useLocalStorage } from "@/hooks";
 import { generateUUID } from "@/utils/uuid";
 import type { KgNodeAction } from "./KgNodeCard";
 import KgCanvas from "./KgCanvas";
-import KgNodeDetailPanel from "./KgNodeDetailPanel";
 import KgNodeEditDialog from "./KgNodeEditDialog";
 import KgToolbar from "./KgToolbar";
 
@@ -238,9 +237,6 @@ export default function KnowledgeGraphPage() {
             onNodeAction={handleNodeAction}
             connectSourceId={connectSourceId}
           />
-        </div>
-        <div className="w-[300px] shrink-0 border-l border-border bg-background">
-          <KgNodeDetailPanel nodeId={selectedNodeId} onEditNode={handleEditNode} />
         </div>
       </div>
       <KgNodeEditDialog
