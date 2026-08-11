@@ -15,7 +15,9 @@
     "graph-delete-confirm": "确定删除图谱「{{name}}」吗？所有节点和关联将被删除。",
     "graph-edit": "编辑图谱",
     "graph-new": "新建图谱",
-    "view-tag-memos": "查看标签笔记"
+    "view-tag-memos": "查看标签笔记",
+    "open-memo-detail": "打开笔记详情",
+    "more-memos": "+{{count}} 更多笔记"
   },
   "aiChat": {
     "title": "AI 助手",

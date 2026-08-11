@@ -26,3 +26,10 @@ export const EDGE_TYPE_STYLES: Record<string, { stroke: string; dashed: boolean 
 
 export const DEFAULT_NODE_WIDTH = 180;
 export const DEFAULT_NODE_HEIGHT = 80;
+
+// 笔记子节点尺寸（更小）
+export const MEMO_NODE_WIDTH = 160;
+export const MEMO_NODE_HEIGHT = 48;
+
+// 每个知识节点默认显示的笔记子节点数量
+export const MEMO_DISPLAY_COUNT = 5;

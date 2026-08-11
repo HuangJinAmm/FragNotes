@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQueries } from "@tanstack/react-query";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -13,7 +14,9 @@ import {
   useNodesState,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import { invoke } from "@tauri-apps/api/core";
 import {
+  kgKeys,
   useKgEdges,
   useKgNodes,
   useCreateKgEdge,
@@ -23,13 +26,19 @@ import {
 import { useDebouncedEffect } from "@/hooks";
 import { layoutGraph, toFlowEdges, toFlowNodes } from "./layout";
 import KgNodeCard, { type KgNodeData, type KgNodeAction } from "./KgNodeCard";
+import KgMemoNodeCard, { type KgMemoNodeData } from "./KgMemoNodeCard";
+import KgMoreNodeCard, { type KgMoreNodeData } from "./KgMoreNodeCard";
 import KgEdgeWithLabel from "./KgEdgeWithLabel";
+import KgMemoPreviewDialog from "./KgMemoPreviewDialog";
+import { MEMO_DISPLAY_COUNT } from "./constants";
 import type { KgEdge, KgNode } from "@/types/kg";
+import type { Memo } from "@/types/proto/api/v1/memo_service_pb";
 
 // 模块级常量：避免 data 为 undefined 时 `= []` 每次渲染产生新引用，
 // 导致下游 useMemo 链不断重算、useEffect 无限触发 setFlowNodes。
 const EMPTY_NODES: KgNode[] = [];
 const EMPTY_EDGES: KgEdge[] = [];
+const EMPTY_MEMOS: Memo[] = [];
 
 interface Props {
   graphId: number;
@@ -42,7 +51,7 @@ interface Props {
   connectSourceId?: number | null;
 }
 
-const nodeTypes = { kgNode: KgNodeCard };
+const nodeTypes = { kgNode: KgNodeCard, kgMemoNode: KgMemoNodeCard, kgMoreNode: KgMoreNodeCard };
 const edgeTypes = { kgEdge: KgEdgeWithLabel };
 
 function KgCanvasInner({
@@ -59,7 +68,34 @@ function KgCanvasInner({
   const setCollapsed = useSetKgNodeCollapsed();
   const createEdge = useCreateKgEdge();
 
-  // 计算每个节点是否有子节点（用于折叠按钮显示）
+  // 每个节点的笔记显示数量（分页），key = nodeId
+  const [memoDisplayCounts, setMemoDisplayCounts] = useState<Map<number, number>>(new Map());
+  // 选中的笔记（用于预览弹窗）
+  const [previewMemo, setPreviewMemo] = useState<Memo | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+
+  // 批量查询所有有标签节点的匹配笔记
+  const nodesWithTags = useMemo(() => nodes.filter((n) => n.tags.length > 0), [nodes]);
+  const memoQueries = useQueries({
+    queries: nodesWithTags.map((node) => ({
+      queryKey: kgKeys.nodeMemos(node.id),
+      queryFn: () => invoke<Memo[]>("kg_list_node_memos", { nodeId: node.id }),
+    })),
+  });
+
+  // 节点 id → 匹配笔记列表
+  const nodeMemosMap = useMemo(() => {
+    const map = new Map<number, Memo[]>();
+    nodesWithTags.forEach((node, i) => {
+      const data = memoQueries[i].data;
+      map.set(node.id, data ?? EMPTY_MEMOS);
+    });
+    return map;
+    // memoQueries 的 data 变化时重算；用长度+状态作为依赖避免引用抖动
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodesWithTags, memoQueries.map((q) => q.data).join()]);
+
+  // 计算每个节点是否有子节点（知识子节点或笔记子节点，用于折叠按钮显示）
   const hasChildrenMap = useMemo(() => {
     const map = new Map<number, boolean>();
     nodes.forEach((n) => {
@@ -67,10 +103,16 @@ function KgCanvasInner({
         map.set(n.parent_id, true);
       }
     });
+    // 有匹配笔记的节点也算有子节点
+    nodeMemosMap.forEach((memos, nodeId) => {
+      if (memos.length > 0) {
+        map.set(nodeId, true);
+      }
+    });
     return map;
-  }, [nodes]);
+  }, [nodes, nodeMemosMap]);
 
-  // 过滤掉折叠节点的后代
+  // 过滤掉折叠节点的后代（仅知识节点）
   const visibleNodes = useMemo(() => {
     const collapsedSet = new Set<number>();
     nodes.forEach((n) => {
@@ -91,26 +133,77 @@ function KgCanvasInner({
     return nodes.filter((n) => !checkHidden(n));
   }, [nodes]);
 
+  // 构建布局用的节点列表（知识节点 + 笔记虚拟节点 + 更多虚拟节点）
+  const layoutNodes = useMemo(() => {
+    const result: Array<{
+      id: string;
+      parent_id: string | null;
+      pos_x: number | null;
+      pos_y: number | null;
+      kind?: "memo" | "more";
+    }> = [];
+
+    // 知识节点
+    visibleNodes.forEach((n) => {
+      result.push({
+        id: String(n.id),
+        parent_id: n.parent_id != null ? String(n.parent_id) : null,
+        pos_x: n.pos_x,
+        pos_y: n.pos_y,
+      });
+    });
+
+    // 笔记虚拟节点 + 更多虚拟节点
+    const collapsedSet = new Set(visibleNodes.filter((n) => n.collapsed).map((n) => n.id));
+    visibleNodes.forEach((n) => {
+      if (collapsedSet.has(n.id)) return; // 折叠的节点不显示笔记子节点
+      const memos = nodeMemosMap.get(n.id);
+      if (!memos || memos.length === 0) return;
+
+      const displayCount = memoDisplayCounts.get(n.id) ?? MEMO_DISPLAY_COUNT;
+      const visibleMemos = memos.slice(0, displayCount);
+
+      visibleMemos.forEach((memo) => {
+        result.push({
+          id: `memo:${memo.name}`,
+          parent_id: String(n.id),
+          pos_x: null,
+          pos_y: null,
+          kind: "memo" as const,
+        });
+      });
+
+      // 如果还有更多笔记，添加"+更多"节点
+      if (memos.length > displayCount) {
+        result.push({
+          id: `more:${n.id}`,
+          parent_id: String(n.id),
+          pos_x: null,
+          pos_y: null,
+          kind: "more" as const,
+        });
+      }
+    });
+
+    return result;
+  }, [visibleNodes, nodeMemosMap, memoDisplayCounts]);
+
   // 布局
   const positions = useMemo(() => {
-    return layoutGraph(visibleNodes, edges);
-  }, [visibleNodes, edges]);
+    return layoutGraph(layoutNodes, edges.map((e) => ({ source_id: String(e.source_id), target_id: String(e.target_id) })));
+  }, [layoutNodes, edges]);
 
-  // 用 useNodesState 让 React Flow 实时管理拖拽位置（核心：拖拽时 onNodesChange 实时更新 state）
+  // 用 useNodesState 让 React Flow 实时管理拖拽位置
   const [flowNodes, setFlowNodes, onNodesChange] = useNodesState<Node>([]);
   const [flowEdges, setFlowEdges, onEdgesChange] = useEdgesState<Edge>([]);
 
-  // 缓存上次同步时的后端 position key，用于判断后端 position 是否变化（区分"用户拖拽"与"后端重置/同步"）
+  // 缓存上次同步时的后端 position key
   const prevBackendPosKeysRef = useRef<Map<string, string>>(new Map());
 
-  // 后端数据变化时智能同步到 flowNodes：
-  // - 新节点：用 dagre 计算的位置
-  // - 已有节点且后端 position 未变：保留现有 position（可能是用户拖拽中的，避免覆盖）
-  // - 已有节点但后端 position 变了（重置布局/拖拽保存完成/多端同步）：用计算的新位置
+  // 后端数据变化时智能同步到 flowNodes
   useEffect(() => {
-    const computed = toFlowNodes(visibleNodes, positions);
+    const computed = toFlowNodes(layoutNodes, positions);
     const newBackendPosKeys = new Map<string, string>();
-    // 构建后端 position key
     visibleNodes.forEach((vn) => {
       newBackendPosKeys.set(
         String(vn.id),
@@ -121,35 +214,70 @@ function KgCanvasInner({
     setFlowNodes((prev) => {
       const prevMap = new Map(prev.map((n) => [n.id, n]));
       const next = computed.map((n) => {
-        const data = n.data as KgNodeData;
-        const existing = prevMap.get(n.id);
-        const backendPosKey = newBackendPosKeys.get(n.id);
-        const prevBackendPosKey = prevBackendPosKeysRef.current.get(n.id);
-        const backendPosChanged = backendPosKey !== prevBackendPosKey;
-        // 后端 position 变了或节点是新的 → 用计算位置；否则保留现有（用户拖拽中）
-        const position = !existing || backendPosChanged ? n.position : existing.position;
+        // 知识节点
+        if (!n.id.startsWith("memo:") && !n.id.startsWith("more:")) {
+          const data = n.data as KgNodeData;
+          const existing = prevMap.get(n.id);
+          const backendPosKey = newBackendPosKeys.get(n.id);
+          const prevBackendPosKey = prevBackendPosKeysRef.current.get(n.id);
+          const backendPosChanged = backendPosKey !== prevBackendPosKey;
+          const position = !existing || backendPosChanged ? n.position : existing.position;
+          return {
+            ...n,
+            data: {
+              ...data,
+              hasChildren: hasChildrenMap.get(data.id) ?? false,
+              connectMode: connectSourceId === data.id,
+            },
+            position,
+            selected: selectedNodeId === data.id,
+          };
+        }
+        // 笔记虚拟节点
+        if (n.id.startsWith("memo:")) {
+          const memoUid = n.id.slice(5);
+          const memo = findMemo(nodeMemosMap, memoUid);
+          const memoData: KgMemoNodeData = {
+            memoUid,
+            content: memo?.content ?? "",
+            parentId: (n.data as { parent_id: string }).parent_id,
+          };
+          return {
+            ...n,
+            data: memoData as unknown as Record<string, unknown>,
+            selected: false,
+          };
+        }
+        // 更多虚拟节点
+        const parentId = n.id.slice(5);
+        const parentNodeId = Number(parentId);
+        const memos = nodeMemosMap.get(parentNodeId) ?? [];
+        const displayCount = memoDisplayCounts.get(parentNodeId) ?? MEMO_DISPLAY_COUNT;
+        const moreData: KgMoreNodeData = {
+          parentId,
+          remaining: memos.length - displayCount,
+        };
         return {
           ...n,
-          data: {
-            ...data,
-            hasChildren: hasChildrenMap.get(data.id) ?? false,
-            connectMode: connectSourceId === data.id,
-          },
-          position,
-          selected: selectedNodeId === data.id,
+          data: moreData as unknown as Record<string, unknown>,
+          selected: false,
         };
       });
       return next;
     });
 
     prevBackendPosKeysRef.current = newBackendPosKeys;
-  }, [visibleNodes, positions, hasChildrenMap, selectedNodeId, connectSourceId, setFlowNodes]);
+  }, [layoutNodes, positions, hasChildrenMap, selectedNodeId, connectSourceId, setFlowNodes, nodeMemosMap, memoDisplayCounts]);
 
-  // 同步 edges
+  // 同步 edges（仅知识节点之间的边）
   useEffect(() => {
-    const visibleIds = new Set(visibleNodes.map((n) => n.id));
+    const visibleIds = new Set(visibleNodes.map((n) => String(n.id)));
     setFlowEdges(
-      toFlowEdges(edges.filter((e) => visibleIds.has(e.source_id) && visibleIds.has(e.target_id))),
+      toFlowEdges(
+        edges
+          .filter((e) => visibleIds.has(String(e.source_id)) && visibleIds.has(String(e.target_id)))
+          .map((e) => ({ ...e, id: String(e.id), source_id: String(e.source_id), target_id: String(e.target_id) })),
+      ),
     );
   }, [edges, visibleNodes, setFlowEdges]);
 
@@ -159,11 +287,12 @@ function KgCanvasInner({
     () => {
       if (pendingPositions.size === 0) return;
       for (const [id, pos] of pendingPositions) {
+        // 仅知识节点保存位置
+        if (id.startsWith("memo:") || id.startsWith("more:")) continue;
         setPos.mutate(
           { id: Number(id), x: pos.x, y: pos.y },
           {
             onSuccess: () => {
-              // 通知对应节点闪烁绿点
               window.dispatchEvent(
                 new CustomEvent("kg-position-saved", { detail: { id: Number(id) } }),
               );
@@ -178,6 +307,8 @@ function KgCanvasInner({
   );
 
   const onNodeDragStop: OnNodeDrag = useCallback((_evt, node) => {
+    // 笔记虚拟节点不保存位置
+    if (node.id.startsWith("memo:") || node.id.startsWith("more:")) return;
     setPendingPositions((prev) => {
       const next = new Map(prev);
       next.set(node.id, node.position);
@@ -187,19 +318,39 @@ function KgCanvasInner({
 
   const onNodeClick: NodeMouseHandler = useCallback(
     (_evt, node) => {
+      // 笔记节点点击 → 弹窗预览
+      if (node.id.startsWith("memo:")) {
+        const memoUid = node.id.slice(5);
+        const memo = findMemo(nodeMemosMap, memoUid);
+        if (memo) {
+          setPreviewMemo(memo);
+          setPreviewOpen(true);
+        }
+        return;
+      }
+      // 更多节点点击 → 加载更多
+      if (node.id.startsWith("more:")) {
+        const parentId = Number(node.id.slice(5));
+        setMemoDisplayCounts((prev) => {
+          const next = new Map(prev);
+          const current = next.get(parentId) ?? MEMO_DISPLAY_COUNT;
+          next.set(parentId, current + MEMO_DISPLAY_COUNT);
+          return next;
+        });
+        return;
+      }
+      // 知识节点
       const id = Number(node.id);
-      // 连接模式下：点击非源节点 → 创建边
       if (connectSourceId != null && connectSourceId !== id) {
         onNodeAction?.("connect", id);
         return;
       }
       onSelectNode(id);
     },
-    [onSelectNode, connectSourceId, onNodeAction],
+    [onSelectNode, connectSourceId, onNodeAction, nodeMemosMap],
   );
 
   const onPaneClick = useCallback(() => {
-    // 连接模式下点击空白 → 取消连接模式
     if (connectSourceId != null) {
       onNodeAction?.("connect", -1);
       return;
@@ -209,6 +360,8 @@ function KgCanvasInner({
 
   const onNodeDoubleClick: NodeMouseHandler = useCallback(
     (_evt, node) => {
+      // 笔记节点和更多节点不触发编辑
+      if (node.id.startsWith("memo:") || node.id.startsWith("more:")) return;
       onRequestEditNode(Number(node.id));
     },
     [onRequestEditNode],
@@ -227,20 +380,18 @@ function KgCanvasInner({
     [createEdge],
   );
 
-  // 监听节点快捷操作事件（kg-node-action）
+  // 监听节点快捷操作事件
   useEffect(() => {
     const actionHandler = (e: Event) => {
       const detail = (e as CustomEvent<{ action: KgNodeAction; id: number }>).detail;
       if (detail.action === "edit") {
         onRequestEditNode(detail.id);
       } else if (detail.action === "toggle-collapse") {
-        // 折叠在 Canvas 内部处理（需要查找当前 collapsed 状态）
         const node = nodes.find((n) => n.id === detail.id);
         if (node) {
           setCollapsed.mutate({ id: detail.id, collapsed: !node.collapsed });
         }
       } else {
-        // add-child / connect / duplicate / delete 交给父组件
         onNodeAction?.(detail.action, detail.id);
       }
     };
@@ -249,25 +400,37 @@ function KgCanvasInner({
   }, [onRequestEditNode, onNodeAction, nodes, setCollapsed]);
 
   return (
-    <ReactFlow
-      nodes={flowNodes}
-      edges={flowEdges}
-      nodeTypes={nodeTypes}
-      edgeTypes={edgeTypes}
-      onNodesChange={onNodesChange}
-      onEdgesChange={onEdgesChange}
-      onNodeClick={onNodeClick}
-      onNodeDoubleClick={onNodeDoubleClick}
-      onNodeDragStop={onNodeDragStop}
-      onPaneClick={onPaneClick}
-      onConnect={onConnect}
-      fitView
-      className={connectSourceId != null ? "bg-muted/10 cursor-crosshair" : "bg-muted/10"}
-    >
-      <Background gap={16} size={1} />
-      <Controls />
-    </ReactFlow>
+    <>
+      <ReactFlow
+        nodes={flowNodes}
+        edges={flowEdges}
+        nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onNodeClick={onNodeClick}
+        onNodeDoubleClick={onNodeDoubleClick}
+        onNodeDragStop={onNodeDragStop}
+        onPaneClick={onPaneClick}
+        onConnect={onConnect}
+        fitView
+        className={connectSourceId != null ? "bg-muted/10 cursor-crosshair" : "bg-muted/10"}
+      >
+        <Background gap={16} size={1} />
+        <Controls />
+      </ReactFlow>
+      <KgMemoPreviewDialog memo={previewMemo} open={previewOpen} onOpenChange={setPreviewOpen} />
+    </>
   );
+}
+
+/** 从 nodeMemosMap 中查找指定 uid 的笔记 */
+function findMemo(nodeMemosMap: Map<number, Memo[]>, memoUid: string): Memo | undefined {
+  for (const memos of nodeMemosMap.values()) {
+    const found = memos.find((m) => m.name.split("/").pop() === memoUid);
+    if (found) return found;
+  }
+  return undefined;
 }
 
 export default function KgCanvas(props: Props) {
