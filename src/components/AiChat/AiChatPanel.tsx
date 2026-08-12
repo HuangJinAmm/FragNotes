@@ -98,6 +98,7 @@ export function AiChatPanel() {
   const {
     messages,
     isStreaming,
+    stats,
     currentSessionId,
     send,
     abort,
@@ -304,6 +305,28 @@ export function AiChatPanel() {
 
             {/* Messages */}
             <AiChatMessages messages={messages} />
+
+            {/* Stats bar: token 用量 + 轮次 + 工具耗时 */}
+            {stats && (
+              <div className="flex items-center gap-2 px-3 py-1 text-[11px] text-muted-foreground border-t bg-muted/30 overflow-x-auto whitespace-nowrap">
+                <span>
+                  {(stats.total_tokens / 1000).toFixed(1)}k tokens
+                </span>
+                <span className="text-border">·</span>
+                <span>{stats.rounds_completed} 轮</span>
+                {stats.tool_timings.length > 0 && (
+                  <>
+                    <span className="text-border">·</span>
+                    <span>
+                      工具:{" "}
+                      {stats.tool_timings
+                        .map(([name, ms]) => `${name}(${ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`})`)
+                        .join(" ")}
+                    </span>
+                  </>
+                )}
+              </div>
+            )}
 
             {/* Composer */}
             <AiChatComposer

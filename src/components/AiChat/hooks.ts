@@ -17,6 +17,7 @@ import {
 import type {
   ChatMessage,
   ContentPart,
+  StatsPayload,
   ToolPayload,
   WireMessage,
 } from "./types";
@@ -88,6 +89,8 @@ export function useAiChat({ providerId }: UseAiChatOptions) {
   const queryClient = useQueryClient();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
+  /// 当前 run 的可观测性数据（token 用量、工具耗时、轮次）
+  const [stats, setStats] = useState<StatsPayload | null>(null);
   const [currentSessionId, setCurrentSessionIdState] = useState<number | null>(null);
   /// ref 同步镜像 currentSessionId，供 useCallback 闭包读取最新值
   const sessionIdRef = useRef<number | null>(null);
@@ -101,10 +104,13 @@ export function useAiChat({ providerId }: UseAiChatOptions) {
   /// 而不是再次拆分出新的 tool_calls assistant。
   const toolCallAssistantId = useRef<string | null>(null);
   const unlistenersRef = useRef<UnlistenFn[]>([]);
-  /// 待持久化的消息队列：避免流式过程中频繁写库
-  /// 流式完成后一次性落库 assistant 最终内容
-  const pendingUserMsgRef = useRef<ChatMessage | null>(null);
-  const pendingAssistantMsgRef = useRef<ChatMessage | null>(null);
+  /// 已入队持久化的消息 id 集合：用于去重，每条消息只落库一次。
+  /// 替代旧的 pendingAssistantMsgRef 状态机，消除 await 期间 ref 被覆盖的竞态问题。
+  const persistedIdsRef = useRef<Set<string>>(new Set());
+  /// 待落库的消息队列：定时批量 flush，避免流式过程中频繁写库。
+  const persistQueueRef = useRef<{ sid: number; msg: ChatMessage }[]>([]);
+  /// 防止并发 flush 的标记
+  const isFlushingRef = useRef(false);
 
   // 设置事件监听
   useEffect(() => {
@@ -161,8 +167,8 @@ export function useAiChat({ providerId }: UseAiChatOptions) {
                     toolCalls: [{ id: tool_call_id, name, args }],
                   };
                   toolCallAssistantId.current = next[i].id;
-                  // 落库该 assistant（已经定稿，content 可能非空）
-                  void persistCurrent(next[i]);
+                  // 入队持久化该 assistant（已经定稿，content 可能非空）
+                  enqueuePersist(next[i]);
                   break;
                 }
               }
@@ -175,8 +181,8 @@ export function useAiChat({ providerId }: UseAiChatOptions) {
                   ...next[idx],
                   toolCalls: [...prevCalls, { id: tool_call_id, name, args }],
                 };
-                // 更新已落库的 assistant 记录（追加 tool_calls）
-                void persistCurrent(next[idx], true);
+                // 入队持久化（已被 Set 去重，不会重复落库）
+                enqueuePersist(next[idx]);
               }
             }
             // 添加 tool 消息（携带结果用于下次请求回传）
@@ -202,8 +208,8 @@ export function useAiChat({ providerId }: UseAiChatOptions) {
             } else {
               next.push(toolMsg);
             }
-            // 落库 tool 消息
-            void persistCurrent(toolMsg);
+            // 入队持久化 tool 消息
+            enqueuePersist(toolMsg);
             // 确保末尾有一个流式 assistant 用于接收下一轮的文本
             const last = next[next.length - 1];
             if (!last || last.role !== "assistant" || !last.streaming) {
@@ -214,7 +220,6 @@ export function useAiChat({ providerId }: UseAiChatOptions) {
                 streaming: true,
               };
               next.push(newAssistant);
-              pendingAssistantMsgRef.current = newAssistant;
             }
             return next;
           });
@@ -244,21 +249,16 @@ export function useAiChat({ providerId }: UseAiChatOptions) {
                   !m.toolCalls
                 );
               });
-            // 落库最终的 assistant 消息
+            // 入队持久化最终的 assistant 消息
             const finalAssistant = next[next.length - 1];
             if (finalAssistant && finalAssistant.role === "assistant") {
-              void persistCurrent(finalAssistant, true);
+              enqueuePersist(finalAssistant);
             }
             return next;
           });
           setIsStreaming(false);
           currentRunId.current = null;
           toolCallAssistantId.current = null;
-          pendingUserMsgRef.current = null;
-          // 注意：不在此处清除 pendingAssistantMsgRef。
-          // setMessages 的 updater 在 React 渲染时才执行（automatic batching），
-          // 此处同步清除会导致 updater 中的 persistCurrent 条件不成立，assistant 消息不落库。
-          // pendingAssistantMsgRef 由 persistCurrent 内部在落库成功后清除。
         }),
       );
 
@@ -270,7 +270,7 @@ export function useAiChat({ providerId }: UseAiChatOptions) {
             prev.map((m, i) => {
               if (i === prev.length - 1 && m.role === "assistant") {
                 const updated = { ...m, streaming: false, isError: true };
-                void persistCurrent(updated, true);
+                enqueuePersist(updated);
                 return updated;
               }
               return m;
@@ -279,8 +279,6 @@ export function useAiChat({ providerId }: UseAiChatOptions) {
           setIsStreaming(false);
           currentRunId.current = null;
           toolCallAssistantId.current = null;
-          pendingUserMsgRef.current = null;
-          // 同上：不在此处清除 pendingAssistantMsgRef，由 persistCurrent 内部处理。
         }),
       );
 
@@ -301,6 +299,14 @@ export function useAiChat({ providerId }: UseAiChatOptions) {
         }),
       );
 
+      // 可观测性 stats：每轮 LLM 调用后推送 token 用量和工具耗时
+      unlisteners.push(
+        await listen<StatsPayload>("ai:stats", (e) => {
+          if (e.payload.run_id !== currentRunId.current) return;
+          setStats(e.payload);
+        }),
+      );
+
       if (mounted) {
         unlistenersRef.current = unlisteners;
       } else {
@@ -317,45 +323,49 @@ export function useAiChat({ providerId }: UseAiChatOptions) {
     };
   }, [queryClient]);
 
-  /// 把一条消息追加到当前 session 落库。
-  /// 若 forceUpdate=true，则尝试更新已落库的同 id 消息（用于流式 assistant 增量更新）。
-  /// 由于 ChatMessage 用前端 UUID，与后端 id 不直接对应，这里简化为：
-  /// - assistant 流式消息：流式过程中不落库，完成时一次性追加
-  /// - 其他消息：直接 append
-  const persistCurrent = useCallback(
-    async (msg: ChatMessage, isFinalAssistant: boolean = false) => {
-      const sid = sessionIdRef.current;
-      if (sid === null) return;
-      try {
-        if (isFinalAssistant && pendingAssistantMsgRef.current?.id === msg.id) {
-          // 流式 assistant 已定稿：追加最终内容
+  /// 将一条消息加入持久化队列。每条消息仅入队一次（按 id 去重）。
+  /// 实际落库由 flushPersistQueue 定时批量执行，避免流式过程中频繁写库
+  /// 和 await 期间 ref 被覆盖的竞态问题。
+  const enqueuePersist = useCallback((msg: ChatMessage) => {
+    const sid = sessionIdRef.current;
+    if (sid === null) return;
+    if (persistedIdsRef.current.has(msg.id)) return;
+    persistedIdsRef.current.add(msg.id);
+    persistQueueRef.current.push({ sid, msg });
+  }, []);
+
+  /// 批量落库队列中的待持久化消息。
+  /// 逐条调用 appendMessage 保证顺序，失败不阻断后续消息。
+  const flushPersistQueue = useCallback(async () => {
+    if (isFlushingRef.current) return;
+    if (persistQueueRef.current.length === 0) return;
+    isFlushingRef.current = true;
+    const batch = persistQueueRef.current.splice(0);
+    try {
+      for (const { sid, msg } of batch) {
+        try {
           await persistAppendMessage(sid, msg);
-          // await 期间 ref 可能已被其他事件（如 ai:tool 创建新 assistant）修改，
-          // 仅在 ref 仍指向当前消息时才清除，避免覆盖新值导致后续落库失败
-          if (pendingAssistantMsgRef.current?.id === msg.id) {
-            pendingAssistantMsgRef.current = null;
-          }
-        } else if (msg.role === "user") {
-          await persistAppendMessage(sid, msg);
-        } else if (msg.role === "tool") {
-          await persistAppendMessage(sid, msg);
-        } else if (msg.role === "assistant" && msg.toolCalls && msg.toolCalls.length > 0) {
-          // 带 tool_calls 的 assistant：仅在首次出现时追加，后续更新靠 tool 消息独立记录
-          if (pendingAssistantMsgRef.current?.id === msg.id) {
-            await persistAppendMessage(sid, msg);
-            // 同上：防止 await 期间 ref 被修改
-            if (pendingAssistantMsgRef.current?.id === msg.id) {
-              pendingAssistantMsgRef.current = null;
-            }
-          }
+        } catch (e) {
+          // 单条落库失败不阻断队列中其余消息
+          console.error("persist message failed:", e);
         }
-      } catch (e) {
-        // 落库失败不阻塞前端展示，仅 console
-        console.error("persist message failed:", e);
       }
-    },
-    [],
-  );
+    } finally {
+      isFlushingRef.current = false;
+    }
+  }, []);
+
+  /// 定时 flush 持久化队列（50ms 间隔）
+  useEffect(() => {
+    const timer = setInterval(() => {
+      void flushPersistQueue();
+    }, 50);
+    return () => {
+      clearInterval(timer);
+      // 组件卸载时同步 flush 剩余消息，避免丢失
+      void flushPersistQueue();
+    };
+  }, [flushPersistQueue]);
 
   /// 将前端 ChatMessage[] 构造为符合 OpenAI 工具调用协议的 WireMessage[]：
   /// assistant(tool_calls) → tool(result) → tool(result) → assistant(text) 的顺序保留，
@@ -410,20 +420,25 @@ export function useAiChat({ providerId }: UseAiChatOptions) {
   /// 切换到指定会话：加载历史消息
   const switchToSession = useCallback(async (sessionId: number | null) => {
     if (isStreaming) return;
+    // 切换会话前 flush 旧会话的待落库消息，避免丢失
+    await flushPersistQueue();
     if (sessionId === null) {
       setCurrentSessionId(null);
       setMessages([]);
+      persistedIdsRef.current.clear();
       return;
     }
     try {
       const records = await listMessages(sessionId);
       const restored = records.map(recordToMessage);
+      // 恢复的消息标记为已持久化，避免重复落库
+      persistedIdsRef.current = new Set(restored.map((m) => m.id));
       setCurrentSessionId(sessionId);
       setMessages(restored);
     } catch (e) {
       toast.error(String(e));
     }
-  }, [isStreaming]);
+  }, [isStreaming, flushPersistQueue]);
 
   /// 新建会话：如果当前 session 无消息则复用，否则创建新会话
   const newChat = useCallback(async (): Promise<number | null> => {
@@ -432,16 +447,19 @@ export function useAiChat({ providerId }: UseAiChatOptions) {
     if (sessionIdRef.current !== null && messages.length === 0) {
       return sessionIdRef.current;
     }
+    // flush 旧会话的待落库消息
+    await flushPersistQueue();
     try {
       const session = await createSession(generateDefaultTitle(), providerId);
       setCurrentSessionId(session.id);
       setMessages([]);
+      persistedIdsRef.current.clear();
       return session.id;
     } catch (e) {
       toast.error(String(e));
       return null;
     }
-  }, [isStreaming, messages.length, providerId]);
+  }, [isStreaming, messages.length, providerId, flushPersistQueue]);
 
   const send = useCallback(
     async (content: string | ContentPart[]) => {
@@ -475,8 +493,6 @@ export function useAiChat({ providerId }: UseAiChatOptions) {
         content: "",
         streaming: true,
       };
-      pendingUserMsgRef.current = userMsg;
-      pendingAssistantMsgRef.current = assistantMsg;
 
       // 保留最近 MAX_TURNS_TO_SEND 轮文本对话（不计 tool 消息），再构造为 OpenAI 格式
       const withUser = [...messages, userMsg];
@@ -499,12 +515,11 @@ export function useAiChat({ providerId }: UseAiChatOptions) {
 
       setMessages((prev) => [...prev, userMsg, assistantMsg]);
       setIsStreaming(true);
+      setStats(null);
       toolCallAssistantId.current = null;
 
-      // 落库 user 消息
-      void persistAppendMessage(sid!, userMsg).catch((e) =>
-        console.error("persist user msg failed:", e),
-      );
+      // 入队持久化 user 消息
+      enqueuePersist(userMsg);
 
       try {
         const runId = await invoke<number>("ai_chat", {
@@ -518,7 +533,7 @@ export function useAiChat({ providerId }: UseAiChatOptions) {
           prev.map((m, i) => {
             if (i === prev.length - 1 && m.role === "assistant") {
               const updated = { ...m, streaming: false, isError: true };
-              void persistAppendMessage(sid!, updated).catch(console.error);
+              enqueuePersist(updated);
               return updated;
             }
             return m;
@@ -527,7 +542,7 @@ export function useAiChat({ providerId }: UseAiChatOptions) {
         setIsStreaming(false);
       }
     },
-    [providerId, isStreaming, messages, buildWireMessages],
+    [providerId, isStreaming, messages, buildWireMessages, enqueuePersist],
   );
 
   const abort = useCallback(async () => {
@@ -544,18 +559,15 @@ export function useAiChat({ providerId }: UseAiChatOptions) {
               streaming: false,
               content: (typeof m.content === "string" ? m.content : "") + " [已中断]",
             };
-            // 落库中断后的 assistant
-            const sid = sessionIdRef.current;
-            if (sid !== null) {
-              void persistAppendMessage(sid, updated).catch(console.error);
-            }
+            // 入队持久化中断后的 assistant
+            enqueuePersist(updated);
             return updated;
           }
           return m;
         }),
       );
     }
-  }, []);
+  }, [enqueuePersist]);
 
   const clear = useCallback(async () => {
     if (isStreaming) return;
@@ -570,6 +582,9 @@ export function useAiChat({ providerId }: UseAiChatOptions) {
     }
     setMessages([]);
     toolCallAssistantId.current = null;
+    // 重置持久化队列和去重集合
+    persistQueueRef.current = [];
+    persistedIdsRef.current.clear();
     // 不创建新 session，让下次 send 时按需创建
     setCurrentSessionId(null);
   }, [isStreaming]);
@@ -577,6 +592,7 @@ export function useAiChat({ providerId }: UseAiChatOptions) {
   return {
     messages,
     isStreaming,
+    stats,
     currentSessionId,
     send,
     abort,

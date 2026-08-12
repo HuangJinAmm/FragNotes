@@ -714,7 +714,7 @@ fn run_card_agent(
 
         let reader = response.into_reader();
         let chunk_app = app.clone();
-        let (content, tool_calls) = read_sse_stream(
+        let (content, tool_calls, _usage) = read_sse_stream(
             reader,
             |delta| {
                 let _ = chunk_app.emit(

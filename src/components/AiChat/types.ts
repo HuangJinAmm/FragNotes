@@ -138,6 +138,29 @@ export interface ErrorPayload {
   message: string;
 }
 
+/// 单个工具的耗时记录（名称, 毫秒）
+export interface ToolTiming {
+  name: string;
+  ms: number;
+}
+
+/// ai:stats 事件 payload：可观测性数据
+export interface StatsPayload {
+  run_id: number;
+  /** 当前轮次（从 1 开始） */
+  round: number;
+  /** 本轮 prompt tokens */
+  prompt_tokens: number;
+  /** 本轮 completion tokens */
+  completion_tokens: number;
+  /** 累计总 tokens */
+  total_tokens: number;
+  /** 本轮各工具耗时 */
+  tool_timings: [string, number][];
+  /** 累计轮次 */
+  rounds_completed: number;
+}
+
 /// Provider 预设模板
 export interface ProviderPreset {
   label: string;

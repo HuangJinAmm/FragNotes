@@ -1,7 +1,7 @@
 //! AI 聊天命令：agent 循环 + 流式推送 + 中断机制
 
 use crate::ai::provider::{load_providers, save_providers, ProviderConfig};
-use crate::ai::sse::read_sse_stream;
+use crate::ai::sse::{read_sse_stream, SseUsage};
 use crate::ai::tools::{execute_tool, tool_definitions};
 use crate::error::{IpcError, IpcResult};
 use crate::state::AppState;
@@ -11,6 +11,7 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
+use std::time::Instant;
 use tauri::{AppHandle, Emitter, Manager};
 
 /// 构建注入系统提示的 skill 元数据段
@@ -125,6 +126,27 @@ struct ContextCompactedPayload {
     after_tokens: usize,
 }
 
+/// 可观测性 stats 事件 payload：每轮 LLM 调用后推送 token 用量和工具耗时
+#[derive(Debug, Clone, Serialize)]
+struct StatsPayload {
+    run_id: u32,
+    /// 当前轮次（从 1 开始）
+    round: u32,
+    /// 本轮 prompt tokens（来自 provider usage，无则 0）
+    prompt_tokens: u64,
+    /// 本轮 completion tokens
+    completion_tokens: u64,
+    /// 累计总 tokens（跨所有轮次）
+    total_tokens: u64,
+    /// 本轮各工具耗时（名称, 毫秒）
+    tool_timings: Vec<(String, u64)>,
+    /// 累计轮次
+    rounds_completed: u32,
+}
+
+/// 单次 run 的 token 上限，超过自动停止防止意外消耗
+const MAX_TOKENS_PER_RUN: u64 = 200_000;
+
 const SYSTEM_PROMPT: &str = "你是 LocalFragNote 的 AI 助手，帮助用户管理他们的笔记（memo）。
 你可以通过工具搜索、读取、创建、更新 memo，列出标签，建立笔记关联，语义搜索，以及创建复习卡片。
 回答使用用户提问的语言。memo 内容是 Markdown 格式。
@@ -220,7 +242,10 @@ fn agent_loop(
     let system_content = format!("{}{}", SYSTEM_PROMPT, skill_metadata);
     let system_msg = json!({"role": "system", "content": system_content});
 
-    for _round in 0..MAX_AGENT_ROUNDS {
+    // 可观测性累加器：跨轮次累计 token 用量
+    let mut accumulated_tokens: u64 = 0;
+
+    for round in 0..MAX_AGENT_ROUNDS {
         if abort_flag.load(Ordering::SeqCst) || state.shutdown.load(Ordering::SeqCst) {
             cleanup_abort(run_id);
             return;
@@ -290,7 +315,7 @@ fn agent_loop(
         let reader = response.into_reader();
         let chunk_app = app.clone();
         let reasoning_app = app.clone();
-        let (content, tool_calls) = match read_sse_stream(
+        let (content, tool_calls, usage) = match read_sse_stream(
             reader,
             |delta| {
                 let _ = chunk_app.emit("ai:chunk", ChunkPayload {
@@ -316,6 +341,19 @@ fn agent_loop(
             }
         };
 
+        // 累计 token 用量（provider 未返回 usage 时用 estimate 兜底）
+        let (prompt_tokens, completion_tokens) = match &usage {
+            Some(u) => (u.prompt_tokens, u.completion_tokens),
+            None => {
+                // 降级：粗估 prompt tokens，completion 按 content 字符数估算
+                let p = crate::ai::context::estimate_tokens(&req_messages) as u64;
+                let c = (content.len() / 3) as u64;
+                (p, c)
+            }
+        };
+        let round_total = prompt_tokens + completion_tokens;
+        accumulated_tokens += round_total;
+
         if abort_flag.load(Ordering::SeqCst) || state.shutdown.load(Ordering::SeqCst) {
             cleanup_abort(run_id);
             return;
@@ -323,6 +361,16 @@ fn agent_loop(
 
         // 无工具调用：流式结束
         if tool_calls.is_empty() {
+            // 推送最后一轮 stats（无工具调用）
+            let _ = app.emit("ai:stats", StatsPayload {
+                run_id,
+                round: round + 1,
+                prompt_tokens,
+                completion_tokens,
+                total_tokens: accumulated_tokens,
+                tool_timings: Vec::new(),
+                rounds_completed: round + 1,
+            });
             let _ = app.emit("ai:done", DonePayload { run_id });
             cleanup_abort(run_id);
             return;
@@ -350,6 +398,7 @@ fn agent_loop(
 
         // 执行每个工具调用：每个工具调用单独获取/释放 Store 锁，
         // 避免在一次循环中长时间持锁阻塞其他 DB 操作（如保存笔记、列表查询）。
+        let mut tool_timings: Vec<(String, u64)> = Vec::new();
         for tc in &tool_calls {
             if abort_flag.load(Ordering::SeqCst) || state.shutdown.load(Ordering::SeqCst) {
                 cleanup_abort(run_id);
@@ -357,10 +406,13 @@ fn agent_loop(
             }
 
             let args: Value = serde_json::from_str(&tc.arguments).unwrap_or(Value::Null);
+            let tool_start = Instant::now();
             let result = {
                 let store = state.store();
                 execute_tool(&tc.name, &args, &store, &state.builtin_skills, &state)
             };
+            let elapsed_ms = tool_start.elapsed().as_millis() as u64;
+            tool_timings.push((tc.name.clone(), elapsed_ms));
             let result = match result {
                 Ok(v) => v,
                 Err(e) => json!({ "error": e.to_string() }),
@@ -390,6 +442,29 @@ fn agent_loop(
                 "tool_call_id": tc.id,
                 "content": result.to_string(),
             }));
+        }
+
+        // 推送本轮 stats（token 用量 + 工具耗时）
+        let _ = app.emit("ai:stats", StatsPayload {
+            run_id,
+            round: round + 1,
+            prompt_tokens,
+            completion_tokens,
+            total_tokens: accumulated_tokens,
+            tool_timings,
+            rounds_completed: round + 1,
+        });
+
+        // 超限自动停止：防止意外消耗
+        if accumulated_tokens > MAX_TOKENS_PER_RUN {
+            let _ = app.emit("ai:error", ErrorPayload {
+                run_id,
+                message: format!(
+                    "已达到单次对话 token 上限 ({MAX_TOKENS_PER_RUN})，当前累计 {accumulated_tokens} tokens，自动停止"
+                ),
+            });
+            cleanup_abort(run_id);
+            return;
         }
     }
 
