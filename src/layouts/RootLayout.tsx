@@ -1,10 +1,12 @@
 import { useEffect, useRef } from "react";
 import { Outlet, useLocation, useSearchParams } from "react-router-dom";
+import { AiChatPanel } from "@/components/AiChat";
 import Navigation from "@/components/Navigation";
 import { useInstance } from "@/contexts/InstanceContext";
 import { useMemoFilterContext } from "@/contexts/MemoFilterContext";
 import useMediaQuery from "@/hooks/useMediaQuery";
 import { cn } from "@/lib/utils";
+import { Routes } from "@/router";
 import { useTranslate } from "@/utils/i18n";
 
 const MEMOS_DEPLOY_URL = "https://usememos.com/docs/deploy";
@@ -62,6 +64,7 @@ const RootLayout = () => {
         {profile.demo && <DemoBanner />}
         <Outlet />
       </main>
+      {pathname !== Routes.WORKSPACE_PICKER && <AiChatPanel />}
     </div>
   );
 };

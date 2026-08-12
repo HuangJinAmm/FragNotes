@@ -1,8 +1,10 @@
 import { useNavigate } from "react-router-dom";
 import { ExternalLinkIcon } from "lucide-react";
-import { timestampDate } from "@bufbuild/protobuf/wkt";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { MemoMarkdownRenderer } from "@/components/MemoContent/MemoMarkdownRenderer";
+import { MemoViewContext } from "@/components/MemoView/MemoViewContext";
+import { STUB_MEMO_VIEW_CONTEXT } from "@/components/MemoPreview/MemoPreview";
 import type { Memo } from "@/types/proto/api/v1/memo_service_pb";
 import { useTranslate } from "@/utils/i18n";
 
@@ -19,7 +21,13 @@ export default function KgMemoPreviewDialog({ memo, open, onOpenChange }: Props)
   if (!memo) return null;
 
   const memoUid = memo.name?.split("/").pop();
-  const date = memo.createTime ? timestampDate(memo.createTime).toLocaleString() : "";
+  // 后端返回 created_ts（秒级数字），优先使用；否则回退到 proto createTime
+  const rawTs = (memo as unknown as { created_ts?: number }).created_ts;
+  const date = rawTs
+    ? new Date(rawTs * 1000).toLocaleString()
+    : memo.createTime
+      ? new Date(Number(memo.createTime.seconds) * 1000).toLocaleString()
+      : "";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -38,9 +46,17 @@ export default function KgMemoPreviewDialog({ memo, open, onOpenChange }: Props)
           </DialogTitle>
         </DialogHeader>
         <div className="max-h-[60vh] overflow-auto">
-          <div className="whitespace-pre-wrap break-words text-sm text-foreground">
-            {memo.content || t("memo.untitled")}
-          </div>
+          {memo.content ? (
+            <MemoViewContext.Provider value={STUB_MEMO_VIEW_CONTEXT}>
+              <MemoMarkdownRenderer
+                content={memo.content}
+                resolvedMentionUsernames={new Set()}
+                memoName={memo.name}
+              />
+            </MemoViewContext.Provider>
+          ) : (
+            <div className="text-sm text-muted-foreground">{t("memo.untitled")}</div>
+          )}
         </div>
       </DialogContent>
     </Dialog>

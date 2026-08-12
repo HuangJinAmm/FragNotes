@@ -10,6 +10,31 @@ export const NODE_COLOR_PALETTE = [
   { key: "pink", label: "粉", dot: "bg-pink-500" },
 ] as const;
 
+// 常用 lucide 图标预设：value = lucide 图标组件名（与 lucide-react 导出一致）
+// 用于节点编辑对话框的图标选择器；用户也可在输入框手动输入其他 lucide 图标名
+export const NODE_ICON_PRESETS = [
+  { value: "", label: "无" },
+  { value: "StarIcon", label: "星标" },
+  { value: "BookOpenIcon", label: "书本" },
+  { value: "LightbulbIcon", label: "灯泡" },
+  { value: "CodeIcon", label: "代码" },
+  { value: "BrainIcon", label: "大脑" },
+  { value: "DatabaseIcon", label: "数据库" },
+  { value: "CpuIcon", label: "CPU" },
+  { value: "CloudIcon", label: "云" },
+  { value: "RocketIcon", label: "火箭" },
+  { value: "FlaskConicalIcon", label: "烧瓶" },
+  { value: "LayersIcon", label: "层级" },
+  { value: "GitBranchIcon", label: "分支" },
+  { value: "WorkflowIcon", label: "流程" },
+  { value: "ServerIcon", label: "服务器" },
+  { value: "GlobeIcon", label: "地球" },
+  { value: "TargetIcon", label: "目标" },
+  { value: "HeartIcon", label: "心形" },
+  { value: "ZapIcon", label: "闪电" },
+  { value: "TagIcon", label: "标签" },
+] as const;
+
 // 边类型预设
 export const EDGE_TYPES = [
   { value: "related", label: "相关" },

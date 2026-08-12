@@ -107,7 +107,11 @@ export function useSetKgNodeTags() {
   return useMutation({
     mutationFn: ({ id, tags }: { id: number; tags: string[] }) =>
       invoke<void>("kg_node_set_tags", { id, tags }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: kgKeys.nodes() }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: kgKeys.nodes() });
+      // 标签变化后笔记匹配也会变化，需失效笔记查询缓存
+      qc.invalidateQueries({ queryKey: [...kgKeys.all, "nodeMemos"] });
+    },
   });
 }
 

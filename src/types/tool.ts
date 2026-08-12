@@ -25,6 +25,13 @@ export const BUILTIN_TOOL_NAMES = [
   "create_review_cards",
   "load_skill",
   "officecli",
+  "update_plan",
+  "list_kg_graphs",
+  "create_kg_graph",
+  "list_kg_nodes",
+  "create_kg_node",
+  "set_kg_node_tags",
+  "link_kg_nodes",
 ] as const;
 
 export const PERMISSION_LABELS: Record<ToolPermission, string> = {

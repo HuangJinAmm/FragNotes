@@ -9,6 +9,9 @@ use memos_core::review::{self, ReviewCard};
 use memos_core::skill::Skill;
 use memos_core::tool::Tool;
 use memos_core::types::{MemoRelationType, RowStatus, Visibility};
+use memos_core::kg_graph::{self, UpsertKgGraph};
+use memos_core::kg_node::{self, UpsertKgNode, FindKgNode};
+use memos_core::kg_edge;
 use memos_core::{ConfigStore, Store};
 use serde_json::{json, Value};
 use std::process::Stdio;
@@ -217,6 +220,107 @@ pub fn tool_definitions(user_tools: &[Tool]) -> Vec<Value> {
                 }
             }
         }),
+        // ===== 知识图谱工具 =====
+        json!({
+            "type": "function",
+            "function": {
+                "name": "list_kg_graphs",
+                "description": "列出所有知识图谱。返回图谱列表（id、名称、描述）。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {}
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "create_kg_graph",
+                "description": "创建一个新的知识图谱。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "name": { "type": "string", "description": "图谱名称，如「机器学习知识体系」" },
+                        "description": { "type": "string", "description": "图谱描述（可空）" }
+                    },
+                    "required": ["name"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "list_kg_nodes",
+                "description": "列出指定知识图谱中的节点。可指定父节点 id 只列出其子节点。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "graph_id": { "type": "number", "description": "图谱 id" },
+                        "parent_id": { "type": "number", "description": "父节点 id（可选）。不传=列出所有节点；传 null=只列根节点；传数字=只列该父的子节点" }
+                    },
+                    "required": ["graph_id"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "create_kg_node",
+                "description": "在知识图谱中创建一个新节点。可设置标签（用于自动关联带相同 #tag 的笔记）、父节点（建立层级）、颜色和图标。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "graph_id": { "type": "number", "description": "所属图谱 id" },
+                        "name": { "type": "string", "description": "节点名称" },
+                        "description": { "type": "string", "description": "节点描述（可空）" },
+                        "tags": {
+                            "type": "array",
+                            "items": { "type": "string" },
+                            "description": "标签列表（不带 # 前缀）。节点标签会自动关联带相同 #tag 的笔记作为子节点"
+                        },
+                        "parent_id": { "type": "number", "description": "父节点 id（可空，空=根节点）" },
+                        "color": { "type": "string", "description": "颜色 key：空(默认)、blue、green、amber、red、purple、cyan、pink" },
+                        "icon": { "type": "string", "description": "lucide 图标名（如 StarIcon，可空）" }
+                    },
+                    "required": ["graph_id", "name"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "set_kg_node_tags",
+                "description": "设置知识图谱节点的标签（全量替换）。标签用于自动关联带相同 #tag 的笔记。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "node_id": { "type": "number", "description": "节点 id" },
+                        "tags": {
+                            "type": "array",
+                            "items": { "type": "string" },
+                            "description": "标签列表（不带 # 前缀，全量替换）"
+                        }
+                    },
+                    "required": ["node_id", "tags"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "link_kg_nodes",
+                "description": "在两个知识图谱节点之间创建一条边（关系连接）。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "source_id": { "type": "number", "description": "起点节点 id" },
+                        "target_id": { "type": "number", "description": "终点节点 id" },
+                        "edge_type": { "type": "string", "enum": ["related", "contains", "derived"], "description": "边类型：related=相关、contains=包含、derived=派生。默认 related" }
+                    },
+                    "required": ["source_id", "target_id"]
+                }
+            }
+        }),
     ];
     // 追加用户工具定义
     for ut in user_tools.iter().filter(|t| t.enabled) {
@@ -269,6 +373,12 @@ pub fn execute_tool(
         }
         "officecli" => execute_officecli(args, state),
         "update_plan" => execute_update_plan(args),
+        "list_kg_graphs" => execute_list_kg_graphs(store),
+        "create_kg_graph" => execute_create_kg_graph(args, store),
+        "list_kg_nodes" => execute_list_kg_nodes(args, store),
+        "create_kg_node" => execute_create_kg_node(args, store),
+        "set_kg_node_tags" => execute_set_kg_node_tags(args, store),
+        "link_kg_nodes" => execute_link_kg_nodes(args, store),
         other => {
             // 内置工具名已知但没匹配上（不应该发生）
             if memos_core::tool::BUILTIN_TOOL_NAMES.contains(&other) {
@@ -866,6 +976,162 @@ fn extract_office_file(args: &[String]) -> Option<std::path::PathBuf> {
     None
 }
 
+// ===== 知识图谱工具执行函数 =====
+
+fn execute_list_kg_graphs(store: &Store) -> memos_core::CoreResult<Value> {
+    let graphs = store.with_conn(|c| kg_graph::list(c))?;
+    let items: Vec<Value> = graphs
+        .into_iter()
+        .map(|g| json!({ "id": g.id, "uid": g.uid, "name": g.name, "description": g.description }))
+        .collect();
+    Ok(json!({ "graphs": items }))
+}
+
+fn execute_create_kg_graph(args: &Value, store: &Store) -> memos_core::CoreResult<Value> {
+    let name = args
+        .get("name")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| memos_core::CoreError::Other("缺少 name 参数".to_string()))?;
+    let description = args.get("description").and_then(|v| v.as_str()).unwrap_or("");
+    let uid = uuid_like();
+    let upsert = UpsertKgGraph {
+        uid: uid.clone(),
+        name: name.to_string(),
+        description: description.to_string(),
+        color: String::new(),
+        icon: String::new(),
+    };
+    let graph = store.with_conn(|c| kg_graph::create(c, &upsert))?;
+    Ok(json!({ "id": graph.id, "uid": graph.uid, "name": graph.name }))
+}
+
+fn execute_list_kg_nodes(args: &Value, store: &Store) -> memos_core::CoreResult<Value> {
+    let graph_id = args
+        .get("graph_id")
+        .and_then(|v| v.as_i64())
+        .ok_or_else(|| memos_core::CoreError::Other("缺少 graph_id 参数".to_string()))?
+        as i32;
+    let parent_id = if args.get("parent_id").is_some() {
+        match args.get("parent_id").and_then(|v| v.as_i64()) {
+            Some(pid) => Some(Some(pid as i32)),
+            None => Some(None), // JSON null → 只列根节点
+        }
+    } else {
+        None // 不传 → 列出所有节点
+    };
+    let find = FindKgNode {
+        graph_id: Some(graph_id),
+        parent_id,
+        id_list: Vec::new(),
+    };
+    let nodes = store.with_conn(|c| kg_node::list(c, &find))?;
+    let items: Vec<Value> = nodes
+        .into_iter()
+        .map(|n| {
+            json!({
+                "id": n.id,
+                "name": n.name,
+                "description": n.description,
+                "color": n.color,
+                "icon": n.icon,
+                "parent_id": n.parent_id,
+                "collapsed": n.collapsed,
+                "tags": n.tags,
+            })
+        })
+        .collect();
+    Ok(json!({ "nodes": items }))
+}
+
+fn execute_create_kg_node(args: &Value, store: &Store) -> memos_core::CoreResult<Value> {
+    let graph_id = args
+        .get("graph_id")
+        .and_then(|v| v.as_i64())
+        .ok_or_else(|| memos_core::CoreError::Other("缺少 graph_id 参数".to_string()))?
+        as i32;
+    let name = args
+        .get("name")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| memos_core::CoreError::Other("缺少 name 参数".to_string()))?;
+    let description = args.get("description").and_then(|v| v.as_str()).unwrap_or("");
+    let color = args.get("color").and_then(|v| v.as_str()).unwrap_or("");
+    let icon = args.get("icon").and_then(|v| v.as_str()).unwrap_or("");
+    let parent_id = args.get("parent_id").and_then(|v| v.as_i64()).map(|v| v as i32);
+    let tags: Vec<String> = args
+        .get("tags")
+        .and_then(|v| v.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(|s| s.trim_start_matches('#').trim().to_string()))
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let uid = uuid_like();
+    let upsert = UpsertKgNode {
+        uid,
+        graph_id,
+        name: name.to_string(),
+        description: description.to_string(),
+        color: color.to_string(),
+        icon: icon.to_string(),
+        parent_id,
+        pos_x: None,
+        pos_y: None,
+        collapsed: false,
+    };
+    let node = store.with_conn(|c| kg_node::create(c, &upsert))?;
+    // 设置标签
+    if !tags.is_empty() {
+        store.with_conn(|c| kg_node::set_tags(c, node.id, &tags))?;
+    }
+    Ok(json!({
+        "id": node.id,
+        "uid": node.uid,
+        "name": node.name,
+        "graph_id": node.graph_id,
+        "parent_id": node.parent_id,
+        "tags": tags,
+    }))
+}
+
+fn execute_set_kg_node_tags(args: &Value, store: &Store) -> memos_core::CoreResult<Value> {
+    let node_id = args
+        .get("node_id")
+        .and_then(|v| v.as_i64())
+        .ok_or_else(|| memos_core::CoreError::Other("缺少 node_id 参数".to_string()))?
+        as i32;
+    let tags: Vec<String> = args
+        .get("tags")
+        .and_then(|v| v.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(|s| s.trim_start_matches('#').trim().to_string()))
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
+        .unwrap_or_default();
+    store.with_conn(|c| kg_node::set_tags(c, node_id, &tags))?;
+    Ok(json!({ "node_id": node_id, "tags": tags }))
+}
+
+fn execute_link_kg_nodes(args: &Value, store: &Store) -> memos_core::CoreResult<Value> {
+    let source_id = args
+        .get("source_id")
+        .and_then(|v| v.as_i64())
+        .ok_or_else(|| memos_core::CoreError::Other("缺少 source_id 参数".to_string()))?
+        as i32;
+    let target_id = args
+        .get("target_id")
+        .and_then(|v| v.as_i64())
+        .ok_or_else(|| memos_core::CoreError::Other("缺少 target_id 参数".to_string()))?
+        as i32;
+    let edge_type = args.get("edge_type").and_then(|v| v.as_str()).unwrap_or("related");
+    let edge = store.with_conn(|c| kg_edge::create(c, source_id, target_id, edge_type, ""))?;
+    Ok(json!({ "id": edge.id, "source_id": edge.source_id, "target_id": edge.target_id, "type": edge.r#type }))
+}
+
 /// 执行内置 officecli 工具
 /// agent_loop 在同步上下文中调用，内部用 async_runtime::block_on 桥接
 fn execute_officecli(args: &Value, state: &AppState) -> memos_core::CoreResult<Value> {
@@ -1193,7 +1459,7 @@ mod tests {
     #[test]
     fn test_tool_definitions_count() {
         let defs = tool_definitions(&[]);
-        assert_eq!(defs.len(), 12);
+        assert_eq!(defs.len(), 18);
         let names: Vec<&str> = defs
             .iter()
             .map(|d| d["function"]["name"].as_str().unwrap())
@@ -1210,6 +1476,12 @@ mod tests {
         assert!(names.contains(&"load_skill"));
         assert!(names.contains(&"officecli"));
         assert!(names.contains(&"update_plan"));
+        assert!(names.contains(&"list_kg_graphs"));
+        assert!(names.contains(&"create_kg_graph"));
+        assert!(names.contains(&"list_kg_nodes"));
+        assert!(names.contains(&"create_kg_node"));
+        assert!(names.contains(&"set_kg_node_tags"));
+        assert!(names.contains(&"link_kg_nodes"));
     }
 
     #[test]
@@ -1233,7 +1505,7 @@ mod tests {
             ..enabled.clone()
         };
         let defs = tool_definitions(&[enabled, disabled]);
-        assert_eq!(defs.len(), 13); // 12 built-in + 1 enabled user tool
+        assert_eq!(defs.len(), 19); // 18 built-in + 1 enabled user tool
         let names: Vec<&str> = defs
             .iter()
             .map(|d| d["function"]["name"].as_str().unwrap())

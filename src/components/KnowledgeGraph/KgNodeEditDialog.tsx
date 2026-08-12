@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useCreateKgNode, useKgNodes, useSetKgNodeTags, useUpdateKgNode } from "@/hooks/useKgQueries";
 import type { KgNode, UpsertKgNodeRequest } from "@/types/kg";
-import { NODE_COLOR_PALETTE } from "./constants";
+import { NODE_COLOR_PALETTE, NODE_ICON_PRESETS } from "./constants";
 import KgTagEditor from "./KgTagEditor";
 
 interface Props {
@@ -123,7 +123,30 @@ export default function KgNodeEditDialog({ open, onOpenChange, editNodeId, defau
           </div>
           <div className="space-y-1">
             <Label htmlFor="kg-node-icon">图标（lucide 图标名，可空）</Label>
-            <Input id="kg-node-icon" value={icon} onChange={(e) => setIcon(e.target.value)} placeholder="如 StarIcon" />
+            <div className="flex gap-1.5">
+              <Input
+                id="kg-node-icon"
+                value={icon}
+                onChange={(e) => setIcon(e.target.value)}
+                placeholder="如 StarIcon"
+                className="flex-1"
+              />
+              <select
+                aria-label="选择图标"
+                value={NODE_ICON_PRESETS.some((p) => p.value === icon) ? icon : "__custom__"}
+                onChange={(e) => {
+                  if (e.target.value !== "__custom__") setIcon(e.target.value);
+                }}
+                className="w-28 rounded-md border border-border bg-transparent px-2 py-1 text-sm"
+              >
+                <option value="__custom__">{icon && !NODE_ICON_PRESETS.some((p) => p.value === icon) ? icon : "选择…"}</option>
+                {NODE_ICON_PRESETS.map((p) => (
+                  <option key={p.value} value={p.value}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
           <div className="space-y-1">
             <Label htmlFor="kg-node-parent">父节点</Label>

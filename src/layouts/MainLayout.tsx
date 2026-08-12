@@ -10,7 +10,6 @@ import { useLocalStorage } from "@/hooks";
 import useMediaQuery from "@/hooks/useMediaQuery";
 import { cn } from "@/lib/utils";
 import { Routes } from "@/router";
-import { AiChatPanel } from "@/components/AiChat";
 import { useTranslate } from "@/utils/i18n";
 
 const DESKTOP_EXPLORER_EXPANDED_WIDTH_CLASS = "w-64";
@@ -82,7 +81,6 @@ const MainLayout = () => {
           <Outlet />
         </div>
       </div>
-      <AiChatPanel />
     </section>
   );
 };

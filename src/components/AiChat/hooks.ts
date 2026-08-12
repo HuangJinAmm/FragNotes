@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { memoKeys } from "@/hooks/useMemoQueries";
 import { userKeys } from "@/hooks/useUserQueries";
+import { kgKeys } from "@/hooks/useKgQueries";
 import {
   appendMessage as persistAppendMessage,
   clearMessages as persistClearMessages,
@@ -20,8 +21,9 @@ import type {
   WireMessage,
 } from "./types";
 
-/// 保留的最近"对话轮次"数（user/assistant 文本消息），工具消息不计入此限制
-const MAX_TURNS_TO_SEND = 20;
+/// 保留的最近"对话轮次"数（user/assistant 文本消息），工具消息不计入此限制。
+/// 后端 agent_loop 有 token 阈值摘要压缩兜底，前端放宽到 40 轮以提供更多初始上下文。
+const MAX_TURNS_TO_SEND = 40;
 
 interface UseAiChatOptions {
   providerId: string | null;
@@ -63,6 +65,17 @@ function invalidateQueriesForTool(queryClient: QueryClient, toolName: string, re
       break;
     case "update_plan":
       // 任务清单更新不修改 memo 数据，无需失效缓存
+      break;
+    case "create_kg_graph":
+      queryClient.invalidateQueries({ queryKey: kgKeys.graphs() });
+      break;
+    case "create_kg_node":
+    case "set_kg_node_tags":
+      queryClient.invalidateQueries({ queryKey: kgKeys.nodes() });
+      queryClient.invalidateQueries({ queryKey: [...kgKeys.all, "nodeMemos"] });
+      break;
+    case "link_kg_nodes":
+      queryClient.invalidateQueries({ queryKey: kgKeys.edges() });
       break;
     default:
       // 用户工具：不直接修改 memo 数据（与 load_skill 同样 no-op）
@@ -268,6 +281,23 @@ export function useAiChat({ providerId }: UseAiChatOptions) {
           toolCallAssistantId.current = null;
           pendingUserMsgRef.current = null;
           // 同上：不在此处清除 pendingAssistantMsgRef，由 persistCurrent 内部处理。
+        }),
+      );
+
+      // 上下文压缩通知：后端 token 超阈值时自动摘要历史消息
+      unlisteners.push(
+        await listen<{
+          run_id: number;
+          before_count: number;
+          after_count: number;
+          before_tokens: number;
+          after_tokens: number;
+        }>("ai:context_compacted", (e) => {
+          if (e.payload.run_id !== currentRunId.current) return;
+          const { before_tokens, after_tokens, before_count, after_count } = e.payload;
+          toast(
+            `上下文已压缩：${before_count} → ${after_count} 条消息（约 ${before_tokens} → ${after_tokens} tokens）`,
+          );
         }),
       );
 

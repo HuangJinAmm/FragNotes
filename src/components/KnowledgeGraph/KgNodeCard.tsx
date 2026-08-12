@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ComponentType } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import {
   ChevronDownIcon,
@@ -10,6 +10,7 @@ import {
   Share2Icon,
   CopyIcon,
   Trash2Icon,
+  icons as lucideIcons,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NODE_COLOR_PALETTE } from "./constants";
@@ -166,6 +167,16 @@ export default function KgNodeCard({ data, selected, dragging }: NodeProps) {
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
+            {(() => {
+              // 动态渲染 lucide 图标：nodeData.icon 为图标组件名（如 "StarIcon"）
+              // lucide-react 的 icons 导出 key 不带 "Icon" 后缀（如 "Star"），需去掉后缀匹配
+              const iconKey = nodeData.icon ? nodeData.icon.replace(/Icon$/, "") : "";
+              const IconComp = iconKey ? (lucideIcons as Record<string, ComponentType<{ className?: string }>>)[iconKey] : null;
+              if (IconComp) {
+                return <IconComp className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />;
+              }
+              return null;
+            })()}
             <span className="truncate text-sm font-medium text-foreground">{nodeData.name}</span>
           </div>
           {nodeData.description && (

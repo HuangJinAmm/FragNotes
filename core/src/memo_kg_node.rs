@@ -46,9 +46,18 @@ pub fn list_by_node(conn: &Connection, node_id: i32) -> CoreResult<Vec<i32>> {
     Ok(out)
 }
 
+/// 标签标准化：去除前导 `#` 并 trim，兼容用户输入 "#RAG" 或 "RAG" 两种格式
+fn normalize_tag(tag: &str) -> String {
+    tag.trim_start_matches('#').trim().to_string()
+}
+
 /// 返回与节点相关的笔记 id：标签交集（自动匹配）∪ 手动关联，去重
 pub fn find_memos_by_kg_node(conn: &Connection, node_id: i32) -> CoreResult<Vec<i32>> {
-    let node_tags: HashSet<String> = kg_node::get_tags(conn, node_id)?.into_iter().collect();
+    let node_tags: HashSet<String> = kg_node::get_tags(conn, node_id)?
+        .into_iter()
+        .map(|t| normalize_tag(&t))
+        .filter(|t| !t.is_empty())
+        .collect();
     let mut result: HashSet<i32> = HashSet::new();
 
     // 自动匹配：扫描所有 NORMAL 状态 memo，提取 #tag 与节点标签求交集
@@ -84,14 +93,27 @@ pub fn find_nodes_by_memo_tags(conn: &Connection, memo_tags: &[String]) -> CoreR
     if memo_tags.is_empty() {
         return Ok(Vec::new());
     }
-    let placeholders: Vec<&str> = memo_tags.iter().map(|_| "?").collect();
+    // 标准化：去除前导 #，同时生成带 # 和不带 # 的变体以兼容历史存储数据
+    let mut variants: Vec<String> = Vec::new();
+    for t in memo_tags {
+        let normalized = normalize_tag(t);
+        if normalized.is_empty() {
+            continue;
+        }
+        variants.push(normalized.clone());
+        variants.push(format!("#{normalized}"));
+    }
+    if variants.is_empty() {
+        return Ok(Vec::new());
+    }
+    let placeholders: Vec<&str> = variants.iter().map(|_| "?").collect();
     let sql = format!(
         "SELECT DISTINCT node_id FROM kg_node_tag WHERE tag IN ({}) ORDER BY node_id ASC",
         placeholders.join(",")
     );
     let mut stmt = conn.prepare(&sql)?;
     let mut args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
-    for t in memo_tags {
+    for t in &variants {
         args.push(Box::new(t.clone()));
     }
     let arg_refs: Vec<&dyn rusqlite::ToSql> = args.iter().map(|b| b.as_ref()).collect();

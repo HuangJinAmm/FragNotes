@@ -81,12 +81,21 @@ function KgCanvasInner({
   const nodesWithTags = useMemo(() => nodes.filter((n) => n.tags.length > 0), [nodes]);
   const memoQueries = useQueries({
     queries: nodesWithTags.map((node) => ({
-      queryKey: kgKeys.nodeMemos(node.id),
-      queryFn: () => invoke<Memo[]>("kg_list_node_memos", { nodeId: node.id }),
+      // 附加 "proto" 标识避免旧缓存（未做 name 转换）被复用
+      queryKey: [...kgKeys.nodeMemos(node.id), "proto"],
+      queryFn: async () => {
+        // 后端返回原始 Memo（uid/created_ts），需补充 proto 格式的 name
+        const raw = await invoke<unknown[]>("kg_list_node_memos", { nodeId: node.id });
+        return (raw as Record<string, unknown>[]).map((m) => ({
+          ...m,
+          name: `memos/${m.uid}`,
+        })) as Memo[];
+      },
     })),
   });
 
   // 节点 id → 匹配笔记列表
+  const memoDataKey = memoQueries.map((q) => `${q.data?.length ?? 0}`).join(",");
   const nodeMemosMap = useMemo(() => {
     const map = new Map<number, Memo[]>();
     nodesWithTags.forEach((node, i) => {
@@ -94,9 +103,8 @@ function KgCanvasInner({
       map.set(node.id, data ?? EMPTY_MEMOS);
     });
     return map;
-    // memoQueries 的 data 变化时重算；用长度+状态作为依赖避免引用抖动
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodesWithTags, memoQueries.map((q) => q.data).join()]);
+  }, [nodesWithTags, memoDataKey]);
 
   // 计算每个节点是否有子节点（知识子节点或笔记子节点，用于折叠按钮显示）
   const hasChildrenMap = useMemo(() => {
@@ -159,9 +167,9 @@ function KgCanvasInner({
     });
 
     // 笔记虚拟节点 + 更多虚拟节点
-    const collapsedSet = new Set(visibleNodes.filter((n) => n.collapsed).map((n) => n.id));
+    // 注意：折叠状态只影响知识子节点的显示（已在 visibleNodes 中过滤），
+    // 笔记子节点作为节点关联内容的展示，始终显示
     visibleNodes.forEach((n) => {
-      if (collapsedSet.has(n.id)) return; // 折叠的节点不显示笔记子节点
       const memos = nodeMemosMap.get(n.id);
       if (!memos || memos.length === 0) return;
 
@@ -241,7 +249,7 @@ function KgCanvasInner({
             selected: selectedNodeId === numericId,
           };
         }
-        // 笔记虚拟节点
+        // 笔记虚拟节点：保留拖拽位置（若已存在）
         if (n.id.startsWith("memo:")) {
           const memoUid = n.id.slice(5);
           const memo = findMemo(nodeMemosMap, memoUid);
@@ -250,13 +258,15 @@ function KgCanvasInner({
             content: memo?.content ?? "",
             parentId: (n.data as { parent_id: string }).parent_id,
           };
+          const existing = prevMap.get(n.id);
           return {
             ...n,
             data: memoData as unknown as Record<string, unknown>,
+            position: existing ? existing.position : n.position,
             selected: false,
           };
         }
-        // 更多虚拟节点
+        // 更多虚拟节点：保留拖拽位置（若已存在）
         const parentId = n.id.slice(5);
         const parentNodeId = Number(parentId);
         const memos = nodeMemosMap.get(parentNodeId) ?? [];
@@ -265,9 +275,11 @@ function KgCanvasInner({
           parentId,
           remaining: memos.length - displayCount,
         };
+        const existingMore = prevMap.get(n.id);
         return {
           ...n,
           data: moreData as unknown as Record<string, unknown>,
+          position: existingMore ? existingMore.position : n.position,
           selected: false,
         };
       });
@@ -277,17 +289,41 @@ function KgCanvasInner({
     prevBackendPosKeysRef.current = newBackendPosKeys;
   }, [layoutNodes, positions, hasChildrenMap, selectedNodeId, connectSourceId, setFlowNodes, nodeMemosMap, memoDisplayCounts]);
 
-  // 同步 edges（仅知识节点之间的边）
+  // 同步 edges：知识节点之间的边 + 父子关系边 + 笔记/更多虚拟节点与父节点的边
   useEffect(() => {
     const visibleIds = new Set(visibleNodes.map((n) => String(n.id)));
-    setFlowEdges(
-      toFlowEdges(
-        edges
-          .filter((e) => visibleIds.has(String(e.source_id)) && visibleIds.has(String(e.target_id)))
-          .map((e) => ({ ...e, id: String(e.id), source_id: String(e.source_id), target_id: String(e.target_id) })),
-      ),
-    );
-  }, [edges, visibleNodes, setFlowEdges]);
+    const kgEdges = edges
+      .filter((e) => visibleIds.has(String(e.source_id)) && visibleIds.has(String(e.target_id)))
+      .map((e) => ({ ...e, id: String(e.id), source_id: String(e.source_id), target_id: String(e.target_id) }));
+
+    // 补充虚拟父子边：
+    // 1) 知识节点的 parent_id 关系（新建子节点时通过 parent_id 表达层级，未入 kg_edge 表）
+    // 2) 笔记子节点 / 更多节点 → 父知识节点
+    // type/label 留空，避免在连线上显示标签
+    const virtualEdges: Array<{ id: string; source_id: string; target_id: string; type: string; label: string }> = [];
+    const addedVirtual = new Set<string>();
+    const addVirtual = (source: string, target: string) => {
+      const key = `${source}->${target}`;
+      if (addedVirtual.has(key)) return;
+      addedVirtual.add(key);
+      virtualEdges.push({ id: `ve:${target}`, source_id: source, target_id: target, type: "", label: "" });
+    };
+
+    // 知识节点的 parent_id 关系
+    visibleNodes.forEach((n) => {
+      if (n.parent_id != null && visibleIds.has(String(n.parent_id))) {
+        addVirtual(String(n.parent_id), String(n.id));
+      }
+    });
+    // 笔记/更多虚拟节点
+    layoutNodes.forEach((n) => {
+      if (n.kind !== "memo" && n.kind !== "more") return;
+      if (n.parent_id == null) return;
+      addVirtual(n.parent_id, n.id);
+    });
+
+    setFlowEdges(toFlowEdges([...kgEdges, ...virtualEdges]));
+  }, [edges, visibleNodes, layoutNodes, setFlowEdges]);
 
   // 拖拽后保存位置（防抖）
   const [pendingPositions, setPendingPositions] = useState<Map<string, { x: number; y: number }>>(new Map());
@@ -438,10 +474,10 @@ function KgCanvasInner({
   );
 }
 
-/** 从 nodeMemosMap 中查找指定 uid 的笔记 */
-function findMemo(nodeMemosMap: Map<number, Memo[]>, memoUid: string): Memo | undefined {
+/** 从 nodeMemosMap 中查找指定 name 的笔记 */
+function findMemo(nodeMemosMap: Map<number, Memo[]>, memoName: string): Memo | undefined {
   for (const memos of nodeMemosMap.values()) {
-    const found = memos.find((m) => m?.name?.split("/").pop() === memoUid);
+    const found = memos.find((m) => m?.name === memoName);
     if (found) return found;
   }
   return undefined;

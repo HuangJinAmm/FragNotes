@@ -87,8 +87,8 @@ export function toFlowNodes<T extends KgLayoutNode>(
     type: n.kind === "memo" ? "kgMemoNode" : n.kind === "more" ? "kgMoreNode" : "kgNode",
     position: positions.get(n.id) ?? { x: 0, y: 0 },
     data: n as unknown as Record<string, unknown>,
-    // 笔记子节点不可拖拽
-    draggable: n.kind !== "memo" && n.kind !== "more",
+    // 所有节点均可拖拽；笔记子节点的拖拽位置不持久化（在 onNodeDragStop 中跳过）
+    draggable: true,
   }));
 }
 

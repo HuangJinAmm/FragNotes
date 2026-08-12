@@ -21,6 +21,10 @@ const RAW_FILES: &[(&str, &str)] = &[
         "semantic_search_tips",
         include_str!("../../skills/semantic_search_tips.md"),
     ),
+    (
+        "knowledge_graph_guide",
+        include_str!("../../skills/knowledge_graph_guide.md"),
+    ),
     // OfficeCLI 内置 skills —— 与 officecli 工具关联
     (
         "officecli-academic-paper",
@@ -144,8 +148,8 @@ mod tests {
     fn test_builtin_skills_loaded() {
         let skills = load_builtin_skills();
         assert!(!skills.is_empty(), "至少应加载一个内置 skill");
-        // 2 个原有 skill + 8 个 office-cli skill = 10
-        assert_eq!(skills.len(), 10, "应加载 10 个内置 skill");
+        // 3 个通用 skill + 8 个 office-cli skill = 11
+        assert_eq!(skills.len(), 11, "应加载 11 个内置 skill");
     }
 
     #[test]

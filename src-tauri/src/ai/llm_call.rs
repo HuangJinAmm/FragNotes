@@ -1,4 +1,4 @@
-//! 非流式 LLM 调用 helper：复用于 suggest_tags 与 document_summary
+//! 非流式 LLM 调用 helper：复用于 suggest_tags、document_summary、上下文摘要
 
 use crate::ai::provider::{load_providers, ProviderConfig};
 use crate::error::{IpcError, IpcResult};
@@ -51,7 +51,17 @@ pub fn call_provider(
 ) -> IpcResult<String> {
     let providers = load_providers(config_store);
     let provider = pick_provider(&providers, preferred_id)?.clone();
+    call_with_provider(&provider, config_store, system_prompt, user_message)
+}
 
+/// 直接使用指定的 provider 配置发起非流式 chat completion。
+/// 供 agent_loop 上下文摘要等已持有 ProviderConfig 的调用方复用，避免重复加载 provider 列表。
+pub fn call_with_provider(
+    provider: &ProviderConfig,
+    _config_store: &ConfigStore,
+    system_prompt: &str,
+    user_message: &str,
+) -> IpcResult<String> {
     let body = json!({
         "model": provider.model,
         "messages": [

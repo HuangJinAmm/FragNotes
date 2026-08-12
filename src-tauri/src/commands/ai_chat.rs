@@ -111,6 +111,20 @@ struct ErrorPayload {
     message: String,
 }
 
+/// 上下文压缩事件 payload：通知前端已自动摘要历史消息
+#[derive(Debug, Clone, Serialize)]
+struct ContextCompactedPayload {
+    run_id: u32,
+    /// 压缩前的消息数
+    before_count: usize,
+    /// 压缩后的消息数
+    after_count: usize,
+    /// 压缩前估算的 token 数
+    before_tokens: usize,
+    /// 压缩后估算的 token 数
+    after_tokens: usize,
+}
+
 const SYSTEM_PROMPT: &str = "你是 LocalFragNote 的 AI 助手，帮助用户管理他们的笔记（memo）。
 你可以通过工具搜索、读取、创建、更新 memo，列出标签，建立笔记关联，语义搜索，以及创建复习卡片。
 回答使用用户提问的语言。memo 内容是 Markdown 格式。
@@ -210,6 +224,30 @@ fn agent_loop(
         if abort_flag.load(Ordering::SeqCst) || state.shutdown.load(Ordering::SeqCst) {
             cleanup_abort(run_id);
             return;
+        }
+
+        // 上下文管理：每轮检查 token 用量，超阈值时自动摘要压缩历史消息
+        {
+            let before_tokens = crate::ai::context::estimate_tokens(&msgs);
+            let before_count = msgs.len();
+            let config_store = state.config_store();
+            match crate::ai::context::maybe_compact_context(&mut msgs, &provider, &config_store) {
+                Ok(true) => {
+                    let after_tokens = crate::ai::context::estimate_tokens(&msgs);
+                    let _ = app.emit("ai:context_compacted", ContextCompactedPayload {
+                        run_id,
+                        before_count,
+                        after_count: msgs.len(),
+                        before_tokens,
+                        after_tokens,
+                    });
+                }
+                Ok(false) => {} // 未触发压缩
+                Err(e) => {
+                    // 摘要失败不阻断主流程，记录日志后继续用原始 msgs
+                    eprintln!("context compaction failed: {e}");
+                }
+            }
         }
 
         // 构造请求 messages：system + 用户对话

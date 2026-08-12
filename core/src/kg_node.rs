@@ -176,14 +176,16 @@ pub fn list(conn: &Connection, find: &FindKgNode) -> CoreResult<Vec<KgNode>> {
 }
 
 /// 设置节点标签（全量替换）
+/// 标签会标准化：去除前导 `#` 并 trim，与笔记 #tag 提取格式对齐
 pub fn set_tags(conn: &Connection, node_id: i32, tags: &[String]) -> CoreResult<()> {
     conn.execute("DELETE FROM kg_node_tag WHERE node_id=?1", params![node_id])?;
-    if tags.is_empty() {
-        return Ok(());
-    }
     let mut stmt = conn.prepare("INSERT INTO kg_node_tag (node_id, tag) VALUES (?1, ?2)")?;
     for tag in tags {
-        stmt.execute(params![node_id, tag])?;
+        let normalized = tag.trim_start_matches('#').trim().to_string();
+        if normalized.is_empty() {
+            continue;
+        }
+        stmt.execute(params![node_id, normalized])?;
     }
     Ok(())
 }

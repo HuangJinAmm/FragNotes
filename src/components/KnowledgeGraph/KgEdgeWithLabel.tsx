@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { BaseEdge, EdgeLabelRenderer, getBezierPath, type EdgeProps } from "@xyflow/react";
-import { EDGE_TYPE_STYLES } from "./constants";
+import { EDGE_TYPES, EDGE_TYPE_STYLES } from "./constants";
+import { useUpdateKgEdge } from "@/hooks/useKgQueries";
 
 export interface KgEdgeData {
   type: string;
@@ -20,6 +22,13 @@ export default function KgEdgeWithLabel({
 }: EdgeProps) {
   const edgeData = (data ?? {}) as KgEdgeData;
   const style = EDGE_TYPE_STYLES[edgeData.type] ?? EDGE_TYPE_STYLES.related;
+  // 虚拟边（parent_id 关系 / 笔记子节点关系）id 以 "ve:" 开头，不可编辑
+  const isVirtual = id.startsWith("ve:");
+  const numericId = Number(id.replace(/^ve:/, ""));
+
+  const [menuOpen, setMenuOpen] = useState(false);
+  const updateEdge = useUpdateKgEdge();
+
   const [edgePath, labelX, labelY] = getBezierPath({
     sourceX,
     sourceY,
@@ -29,9 +38,16 @@ export default function KgEdgeWithLabel({
     targetPosition,
   });
 
+  const handleTypeChange = (type: string) => {
+    updateEdge.mutate({ id: numericId, edge_type: type, label: edgeData.label });
+    setMenuOpen(false);
+  };
+
+  // 类型标签文本（仅用于显示，不可编辑的虚拟边无文本时不显示按钮）
+  const labelText = edgeData.type;
+
   return (
     <>
-      {/* 主线 */}
       <BaseEdge
         id={id}
         path={edgePath}
@@ -41,33 +57,52 @@ export default function KgEdgeWithLabel({
           strokeDasharray: style.dashed ? "6 4" : undefined,
         }}
       />
-      {/* 选中时叠加流动光效 */}
       {selected && (
         <BaseEdge
           id={`${id}-flow`}
           path={edgePath}
-          style={{
-            stroke: style.stroke,
-            strokeWidth: 2.5,
-            opacity: 0.7,
-          }}
+          style={{ stroke: style.stroke, strokeWidth: 2.5, opacity: 0.7 }}
           className="kg-edge-flow"
         />
       )}
-      {(edgeData.label || edgeData.type) && (
-        <EdgeLabelRenderer>
-          <div
-            style={{
-              position: "absolute",
-              transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
-              pointerEvents: "all",
-            }}
-            className="rounded bg-background px-1.5 py-0.5 text-[10px] text-muted-foreground border border-border shadow-sm"
-          >
-            {edgeData.label || edgeData.type}
-          </div>
-        </EdgeLabelRenderer>
-      )}
+      <EdgeLabelRenderer>
+        <div
+          style={{
+            position: "absolute",
+            transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+            pointerEvents: "all",
+          }}
+        >
+          {menuOpen && !isVirtual ? (
+            <>
+              {/* 透明 backdrop：点击空白处关闭菜单 */}
+              <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
+              <div className="relative z-20 rounded-md border border-border bg-background p-1 shadow-lg">
+                <select
+                  value={edgeData.type}
+                  onChange={(e) => handleTypeChange(e.target.value)}
+                  autoFocus
+                  className="rounded border border-border bg-transparent px-1 py-0.5 text-[11px] outline-none focus:border-primary"
+                >
+                  {EDGE_TYPES.map((t) => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </>
+          ) : isVirtual ? null : (
+            <button
+              onClick={() => setMenuOpen(true)}
+              className="rounded bg-background px-1.5 py-0.5 text-[10px] text-muted-foreground border border-border shadow-sm hover:bg-accent cursor-pointer"
+              title="点击修改类型"
+            >
+              {labelText}
+            </button>
+          )}
+        </div>
+      </EdgeLabelRenderer>
     </>
   );
 }
