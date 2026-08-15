@@ -280,12 +280,14 @@ const CARD_GEN_SYSTEM_PROMPT: &str = r#"你是一个记忆卡片生成专家。�
 - cloze: 填空卡（front 带 {{答案}} 占位，cloze_answer 存答案词）
 - concept: 概念解释卡（"请解释：X" → 完整解释）
 - compare: 对比卡（"对比 A 和 B" → 异同点）
+- choice: 选择卡（front 为题干+选项 A/B/C/D，back 为正确选项字母+解析）
+- judge: 判断卡（front 为陈述，back 为"正确/错误"+解析）
 
 ## 输出格式
 返回 JSON 数组，每个元素：
 {
   "memo_uid": "来源 memo 的 uid",
-  "card_type": "basic|reversed|cloze|concept|compare",
+  "card_type": "basic|reversed|cloze|concept|compare|choice|judge",
   "front": "正面内容（Markdown）",
   "back": "背面内容（Markdown）",
   "cloze_answer": "填空答案（仅 cloze 类型，其他为 null）",

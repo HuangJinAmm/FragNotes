@@ -572,7 +572,19 @@
     "heatmap-title": "复习活动",
     "heatmap-description": "所选年份每日复习次数",
     "due-reminder-title": "复习卡片已到期",
-    "due-reminder-body": "你有 {{count}} 张卡片等待复习。"
+    "due-reminder-body": "你有 {{count}} 张卡片等待复习。",
+    "submit": "提交",
+    "show-answer": "看答案",
+    "your-answer": "你的答案",
+    "correct-answer": "正确答案",
+    "type-answer": "输入答案",
+    "true": "正确",
+    "false": "错误",
+    "answer-correct": "回答正确",
+    "answer-incorrect": "回答错误",
+    "show-next": "下一部分",
+    "show-all": "显示全部",
+    "disclosure-progress": "披露进度"
   },
   "router": {
     "back-to-top": "回到顶部",

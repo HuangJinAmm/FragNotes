@@ -1338,6 +1338,18 @@
     "heatmap-title": "Review Activity",
     "heatmap-description": "Daily review counts for the selected year",
     "due-reminder-title": "Review cards due",
-    "due-reminder-body": "You have {{count}} cards waiting for review."
+    "due-reminder-body": "You have {{count}} cards waiting for review.",
+    "submit": "Submit",
+    "show-answer": "Show Answer",
+    "your-answer": "Your Answer",
+    "correct-answer": "Correct Answer",
+    "type-answer": "Type your answer",
+    "true": "True",
+    "false": "False",
+    "answer-correct": "Correct!",
+    "answer-incorrect": "Incorrect",
+    "show-next": "Next",
+    "show-all": "Show All",
+    "disclosure-progress": "Disclosure"
   }
 }

@@ -14,7 +14,7 @@ export interface ReviewCard {
   id: number;
   deck_id: number;
   memo_uid: string;
-  card_type: "basic" | "reversed" | "cloze" | "concept" | "compare";
+  card_type: "basic" | "reversed" | "cloze" | "concept" | "compare" | "choice" | "judge";
   front: string;
   back: string;
   cloze_answer: string | null;
@@ -78,6 +78,8 @@ export const CARD_TYPE_LABELS: Record<string, string> = {
   cloze: "填空",
   concept: "概念",
   compare: "对比",
+  choice: "选择",
+  judge: "判断",
 };
 
 /** 卡片状态标签 */
