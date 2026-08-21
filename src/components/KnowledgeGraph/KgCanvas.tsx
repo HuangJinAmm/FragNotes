@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQueries } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -27,13 +27,14 @@ import {
 import { useDebouncedEffect } from "@/hooks";
 import { stringifyFilters } from "@/contexts/MemoFilterContext";
 import { layoutGraph, toFlowEdges, toFlowNodes } from "./layout";
-import KgNodeCard, { type KgNodeData, type KgNodeAction } from "./KgNodeCard";
+import KgNodeCard, { type KgNodeData, type KgNodeAction, type KgNodeDeckStat } from "./KgNodeCard";
 import KgMemoNodeCard, { type KgMemoNodeData } from "./KgMemoNodeCard";
 import KgMoreNodeCard, { type KgMoreNodeData } from "./KgMoreNodeCard";
 import KgEdgeWithLabel from "./KgEdgeWithLabel";
 import KgMemoPreviewDialog from "./KgMemoPreviewDialog";
 import { MEMO_DISPLAY_COUNT } from "./constants";
 import type { KgEdge, KgNode } from "@/types/kg";
+import type { DeckWithStats } from "@/components/Review/types";
 import type { Memo } from "@/types/proto/api/v1/memo_service_pb";
 
 // 模块级常量：避免 data 为 undefined 时 `= []` 每次渲染产生新引用，
@@ -41,6 +42,7 @@ import type { Memo } from "@/types/proto/api/v1/memo_service_pb";
 const EMPTY_NODES: KgNode[] = [];
 const EMPTY_EDGES: KgEdge[] = [];
 const EMPTY_MEMOS: Memo[] = [];
+const EMPTY_DECKS_WITH_STATS: DeckWithStats[] = [];
 
 interface Props {
   graphId: number;
@@ -105,6 +107,37 @@ function KgCanvasInner({
     return map;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodesWithTags, memoDataKey]);
+
+  // 所有牌组及其统计（用于节点掌握情况展示）
+  const { data: decksWithStats = EMPTY_DECKS_WITH_STATS } = useQuery<DeckWithStats[]>({
+    queryKey: ["review", "decksWithStats"],
+    queryFn: () => invoke<DeckWithStats[]>("review_list_decks_with_stats"),
+  });
+
+  // 节点 id → 标签关联牌组的卡片记忆总览（节点标签与牌组标签有交集时；
+  // 跳过尚未生成卡片的牌组，其无掌握信息可展示）
+  const nodeDeckStatsMap = useMemo(() => {
+    const map = new Map<number, KgNodeDeckStat[]>();
+    if (decksWithStats.length === 0) return map;
+    for (const node of nodes) {
+      if (node.tags.length === 0) continue;
+      const tagSet = new Set(node.tags);
+      const matched = decksWithStats
+        .filter((d) => d.stats.total > 0 && d.deck.tags.some((t) => tagSet.has(t)))
+        .map((d) => ({
+          deckId: d.deck.id,
+          deckName: d.deck.name,
+          dueCount: d.stats.due_count,
+          newCount: d.stats.new_count,
+          total: d.stats.total,
+          learned: d.stats.learned,
+          retentionRate: d.stats.retention_rate,
+          lastReviewedTs: d.stats.last_reviewed_ts,
+        }));
+      if (matched.length > 0) map.set(node.id, matched);
+    }
+    return map;
+  }, [nodes, decksWithStats]);
 
   // 计算每个节点是否有子节点（知识子节点或笔记子节点，用于折叠按钮显示）
   const hasChildrenMap = useMemo(() => {
@@ -244,6 +277,7 @@ function KgCanvasInner({
               id: numericId,
               hasChildren: hasChildrenMap.get(numericId) ?? false,
               connectMode: connectSourceId === numericId,
+              deckStats: nodeDeckStatsMap.get(numericId),
             },
             position,
             selected: selectedNodeId === numericId,
@@ -287,7 +321,7 @@ function KgCanvasInner({
     });
 
     prevBackendPosKeysRef.current = newBackendPosKeys;
-  }, [layoutNodes, positions, hasChildrenMap, selectedNodeId, connectSourceId, setFlowNodes, nodeMemosMap, memoDisplayCounts]);
+  }, [layoutNodes, positions, hasChildrenMap, selectedNodeId, connectSourceId, setFlowNodes, nodeMemosMap, memoDisplayCounts, nodeDeckStatsMap]);
 
   // 同步 edges：知识节点之间的边 + 父子关系边 + 笔记/更多虚拟节点与父节点的边
   useEffect(() => {

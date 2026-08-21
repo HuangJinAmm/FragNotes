@@ -51,6 +51,12 @@ export interface DeckStats {
   last_reviewed_ts: number | null;
 }
 
+/** 牌组及其统计（知识图谱节点掌握度展示用） */
+export interface DeckWithStats {
+  deck: ReviewDeck;
+  stats: DeckStats;
+}
+
 /** 评分结果 */
 export interface ScoreResult {
   updated_card: ReviewCard;

@@ -485,6 +485,24 @@ pub fn deck_stats(conn: &Connection, deck_id: i32) -> CoreResult<DeckStats> {
     })
 }
 
+/// 牌组及其统计（用于知识图谱节点掌握度展示）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeckWithStats {
+    pub deck: ReviewDeck,
+    pub stats: DeckStats,
+}
+
+/// 列出所有牌组及其统计
+pub fn list_decks_with_stats(conn: &Connection) -> CoreResult<Vec<DeckWithStats>> {
+    let decks = list_decks(conn)?;
+    let mut result = Vec::with_capacity(decks.len());
+    for deck in decks {
+        let stats = deck_stats(conn, deck.id)?;
+        result.push(DeckWithStats { deck, stats });
+    }
+    Ok(result)
+}
+
 /// 全局到期卡片总数（跨所有 deck）
 pub fn total_due_count(conn: &Connection) -> CoreResult<i32> {
     let now = Utc::now().timestamp();
