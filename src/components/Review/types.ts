@@ -51,6 +51,19 @@ export interface DeckStats {
   last_reviewed_ts: number | null;
 }
 
+/** 单篇笔记的复习状态（笔记详情侧栏展示用） */
+export interface MemoReviewStats {
+  total_cards: number;
+  due_count: number;
+  new_count: number;
+  /** 最近一次到期时间（秒级时间戳，早于当前时间即有到期卡片） */
+  next_due_ts: number | null;
+  /** 卡片数最多的牌组 id */
+  deck_id: number | null;
+  /** 笔记在卡片生成后又被编辑过（卡片内容可能过时） */
+  stale: boolean;
+}
+
 /** 评分结果 */
 export interface ScoreResult {
   updated_card: ReviewCard;

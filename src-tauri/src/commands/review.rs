@@ -180,6 +180,38 @@ pub fn review_check_new_memos(
     Ok(new_count)
 }
 
+// ==================== KG 联动命令 ====================
+
+/// 从 KG 节点创建（或复用同名的）牌组：标签取节点及其后代节点标签的并集
+#[tauri::command]
+pub fn review_create_deck_from_kg_node(
+    state: tauri::State<'_, AppState>,
+    node_id: i32,
+) -> IpcResult<ReviewDeck> {
+    let store = state.store();
+    Ok(store.with_conn(|c| review::create_deck_from_kg_node(c, node_id))?)
+}
+
+/// 批量统计节点的记忆状态（图谱侧展示用）
+#[tauri::command]
+pub fn review_kg_node_stats(
+    state: tauri::State<'_, AppState>,
+    node_ids: Vec<i32>,
+) -> IpcResult<Vec<review::KgNodeReviewStats>> {
+    let store = state.store();
+    Ok(store.with_conn(|c| review::kg_node_review_stats(c, &node_ids))?)
+}
+
+/// 统计单篇笔记的复习卡片状态（笔记详情侧栏展示用）
+#[tauri::command]
+pub fn review_memo_stats(
+    state: tauri::State<'_, AppState>,
+    memo_uid: String,
+) -> IpcResult<review::MemoReviewStats> {
+    let store = state.store();
+    Ok(store.with_conn(|c| review::memo_review_stats(c, &memo_uid))?)
+}
+
 // ==================== 复习命令 ====================
 
 /// 评分卡片
@@ -440,6 +472,78 @@ pub async fn review_regenerate_card(
     Ok(run_id)
 }
 
+/// 笔记更新后重新生成该笔记的全部卡片（先删旧卡，再按当前内容生成）
+#[tauri::command]
+pub async fn review_regenerate_memo_cards(
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+    deck_id: i32,
+    memo_uid: String,
+) -> IpcResult<u32> {
+    let run_id = REVIEW_RUN_ID.fetch_add(1, Ordering::SeqCst);
+
+    // 读取 deck
+    let deck = {
+        let store = state.store();
+        store
+            .with_conn(|c| review::get_deck(c, deck_id))?
+            .ok_or_else(|| IpcError::NotFound(format!("deck id={deck_id}")))?
+    };
+
+    // 读取 memo 当前内容（生成前先校验存在且未删除）
+    let memo_content = {
+        let store = state.store();
+        let content = store.with_conn(|c| -> memos_core::CoreResult<Option<String>> {
+            let find = memos_core::memo::FindMemo {
+                uid: Some(memo_uid.clone()),
+                ..Default::default()
+            };
+            Ok(memos_core::memo::get(c, &find)?
+                .filter(|m| m.row_status == memos_core::types::RowStatus::Normal)
+                .map(|m| m.content))
+        })?;
+        content.ok_or_else(|| IpcError::NotFound(format!("memo uid={memo_uid} 不存在或已删除")))?
+    };
+
+    // 读取 provider（优先 review_config 指定的）
+    let provider = {
+        let config_store = state.config_store();
+        let providers = load_providers(&config_store);
+        let config_json = config_store
+            .with_conn(|c| config_store.setting.app.get(c, "review_config"))?
+            .unwrap_or_default();
+        let provider_id: String = serde_json::from_str::<Value>(&config_json)
+            .ok()
+            .and_then(|v| {
+                v.get("ai_provider_id")
+                    .and_then(|s| s.as_str().map(String::from))
+            })
+            .unwrap_or_default();
+        if !provider_id.is_empty() {
+            providers
+                .iter()
+                .find(|p| p.id == provider_id)
+                .cloned()
+                .ok_or_else(|| {
+                    IpcError::BadRequest("review_config 指定的 provider 不存在".into())
+                })?
+        } else if let Some(first) = providers.first() {
+            first.clone()
+        } else {
+            return Err(IpcError::BadRequest(
+                "未配置 AI provider，请先在设置中配置".into(),
+            ));
+        }
+    };
+
+    let app_handle = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        card_memo_regeneration_loop(app_handle, run_id, deck_id, memo_uid, memo_content, deck, provider);
+    });
+
+    Ok(run_id)
+}
+
 /// 卡片生成 agent loop
 fn card_generation_loop(
     app: AppHandle,
@@ -646,6 +750,126 @@ fn card_regeneration_loop(
                 }) {
                     Ok(_) => inserted += 1,
                     Err(e) => errors.push(format!("{e}")),
+                }
+            }
+
+            let _ = app.emit(
+                "review:cards-generated",
+                ReviewGenDone {
+                    deck_id,
+                    run_id,
+                    count: inserted,
+                    errors,
+                },
+            );
+        }
+        Err(e) => {
+            let _ = app.emit(
+                "review:generation-error",
+                ReviewGenError {
+                    deck_id,
+                    run_id,
+                    error: e,
+                },
+            );
+        }
+    }
+}
+
+/// 笔记更新后重新生成该笔记的全部卡片（先删旧卡，再按当前内容生成）
+fn card_memo_regeneration_loop(
+    app: AppHandle,
+    run_id: u32,
+    deck_id: i32,
+    memo_uid: String,
+    memo_content: String,
+    deck: ReviewDeck,
+    provider: ProviderConfig,
+) {
+    if is_app_shutting_down(&app) {
+        return;
+    }
+
+    let _ = app.emit(
+        "review:generation-started",
+        ReviewGenStarted { deck_id, run_id },
+    );
+
+    // 先删除该笔记在此牌组的旧卡片（含复习记录）
+    {
+        let state = app.state::<AppState>();
+        let store = state.store();
+        if let Err(e) = store.with_conn(|c| review::delete_cards_by_memo(c, deck_id, &memo_uid)) {
+            let _ = app.emit(
+                "review:generation-error",
+                ReviewGenError {
+                    deck_id,
+                    run_id,
+                    error: format!("删除旧卡片失败: {e}"),
+                },
+            );
+            return;
+        }
+    }
+
+    // 内容直接放入 prompt，免去工具调用往返
+    let user_prompt = format!(
+        "笔记内容在近期被编辑过，请根据以下最新内容重新生成记忆卡片（uid: {}）：\n\n---\n{}\n---\n\n最多生成 {} 张卡片。只返回 JSON 数组，memo_uid 必须为 \"{}\"。",
+        memo_uid, memo_content, deck.cards_per_memo, memo_uid
+    );
+
+    let messages = vec![json!({
+        "role": "user",
+        "content": user_prompt,
+    })];
+
+    let result = run_card_agent(&app, run_id, &provider, &messages);
+
+    match result {
+        Ok(content) => {
+            if is_app_shutting_down(&app) {
+                return;
+            }
+            let drafts = parse_card_json(&content);
+            let state = app.state::<AppState>();
+            let store = state.store();
+            let mut inserted = 0;
+            let mut errors = Vec::new();
+
+            for draft in &drafts {
+                if is_app_shutting_down(&app) {
+                    return;
+                }
+                // 防御：AI 可能幻觉出不存在的 memo_uid，过滤掉
+                if draft.memo_uid != memo_uid {
+                    errors.push(format!("忽略幻觉卡片: memo_uid={}", draft.memo_uid));
+                    continue;
+                }
+                match store.with_conn(|c| {
+                    let now = chrono::Utc::now().timestamp();
+                    let card = ReviewCard {
+                        id: 0,
+                        deck_id,
+                        memo_uid: draft.memo_uid.clone(),
+                        card_type: draft.card_type.clone(),
+                        front: draft.front.clone(),
+                        back: draft.back.clone(),
+                        cloze_answer: draft.cloze_answer.clone(),
+                        angle: draft.angle.clone().unwrap_or_default(),
+                        stability: 0.0,
+                        difficulty: 0.0,
+                        due: now,
+                        last_review: None,
+                        reps: 0,
+                        lapses: 0,
+                        state: 0,
+                        created_ts: now,
+                        memo_deleted: false,
+                    };
+                    review::create_card(c, &card)
+                }) {
+                    Ok(_) => inserted += 1,
+                    Err(e) => errors.push(format!("card memo_uid={}: {e}", draft.memo_uid)),
                 }
             }
 

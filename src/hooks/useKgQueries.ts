@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
+import type { ReviewDeck } from "@/components/Review/types";
 import type {
   CreateKgEdgeRequest,
   KgEdge,
   KgGraph,
   KgNode,
+  KgNodeReviewStats,
   ListKgNodesRequest,
   SetKgPositionRequest,
   UpdateKgEdgeRequest,
@@ -20,6 +22,7 @@ export const kgKeys = {
   edges: () => [...kgKeys.all, "edges"] as const,
   nodeMemos: (nodeId: number) => [...kgKeys.all, "nodeMemos", nodeId] as const,
   memoNodes: (memoUid: string) => [...kgKeys.all, "memoNodes", memoUid] as const,
+  nodeReviewStats: (idsKey: string) => [...kgKeys.all, "nodeReviewStats", idsKey] as const,
 };
 
 export function useKgGraphs() {
@@ -187,5 +190,23 @@ export function useMemoKgNodes(memoUid: string | null) {
     queryKey: kgKeys.memoNodes(memoUid ?? ""),
     queryFn: () => invoke<KgNode[]>("kg_list_memo_nodes", { memoUid }),
     enabled: memoUid != null,
+  });
+}
+
+/** 批量查询节点记忆状态（关联笔记的复习卡片聚合） */
+export function useKgNodeReviewStats(nodeIds: number[]) {
+  const idsKey = nodeIds.join(",");
+  return useQuery<KgNodeReviewStats[]>({
+    queryKey: kgKeys.nodeReviewStats(idsKey),
+    queryFn: () => invoke<KgNodeReviewStats[]>("review_kg_node_stats", { nodeIds }),
+    enabled: nodeIds.length > 0,
+  });
+}
+
+/** 从 KG 节点创建（或复用同名的）牌组 */
+export function useCreateDeckFromKgNode() {
+  return useMutation({
+    mutationFn: (nodeId: number) =>
+      invoke<ReviewDeck>("review_create_deck_from_kg_node", { nodeId }),
   });
 }

@@ -6,7 +6,6 @@ import { toast } from "react-hot-toast";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
 import { useInstance } from "@/contexts/InstanceContext";
 import {
   InstanceSetting_Key,
@@ -72,16 +71,6 @@ const MemoRelatedSettings = () => {
     <SettingSection title={t("setting.memo.label")}>
       <SettingGroup title={t("setting.memo.editing-title")} description={t("setting.memo.editing-description")}>
         <SettingList>
-          <SettingListItem
-            label={t("setting.system.enable-double-click-to-edit")}
-            description={t("setting.memo.double-click-edit-description")}
-          >
-            <Switch
-              checked={memoRelatedSetting.enableDoubleClickEdit}
-              onCheckedChange={(checked) => updatePartialSetting({ enableDoubleClickEdit: checked })}
-            />
-          </SettingListItem>
-
           <SettingListItem label={t("setting.memo.content-length-limit")} description={t("setting.memo.content-length-limit-description")}>
             <div className="flex items-center gap-2">
               <Input

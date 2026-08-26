@@ -1350,6 +1350,16 @@
     "answer-incorrect": "Incorrect",
     "show-next": "Next",
     "show-all": "Show All",
-    "disclosure-progress": "Disclosure"
+    "disclosure-progress": "Disclosure",
+    "view-source": "View source",
+    "memo-stats-section": "Review status",
+    "memo-cards": "{{count}} review cards",
+    "memo-due": "{{count}} due",
+    "memo-mastered": "Mastered",
+    "memo-next-due": "Next review: {{time}}",
+    "memo-stale": "Note updated — cards may be outdated",
+    "memo-regenerate": "Regenerate",
+    "back-to-graph": "Back to Graph",
+    "back-to-memo": "Back to Note"
   }
 }

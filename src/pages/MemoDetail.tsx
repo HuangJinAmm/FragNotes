@@ -1,7 +1,7 @@
 import { Code, ConnectError } from "@connectrpc/connect";
-import { ArrowUpLeftFromCircleIcon } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import { Link, Navigate, useLocation, useParams } from "react-router-dom";
+import { ArrowLeftIcon, ArrowUpLeftFromCircleIcon } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Link, Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
 import MemoCommentSection from "@/components/MemoCommentSection";
 import { MentionResolutionProvider } from "@/components/MemoContent/MentionResolutionContext";
 import { MemoDetailSidebar, MemoDetailSidebarDrawer } from "@/components/MemoDetailSidebar";
@@ -13,10 +13,13 @@ import useMemoDetailError from "@/hooks/useMemoDetailError";
 import { useInfiniteMemoComments, useMemo } from "@/hooks/useMemoQueries";
 import { useSharedMemo, withShareAttachmentLinks } from "@/hooks/useMemoShareQueries";
 import { cn } from "@/lib/utils";
+import { useTranslate } from "@/utils/i18n";
 import type { Attachment } from "@/types/proto/api/v1/attachment_service_pb";
 
 const MemoDetail = () => {
   const md = useMediaQuery("md");
+  const navigate = useNavigate();
+  const t = useTranslate();
   const [shareImageDialogOpen, setShareImageDialogOpen] = useState(false);
   const params = useParams();
   const location = useLocation();
@@ -68,6 +71,18 @@ const MemoDetail = () => {
     scrolledHashRef.current = hash;
     el.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [hash, memo, comments]);
+
+  // 返回逻辑：优先用跳转来源页（state.from），无来源则浏览器后退，后退不可用回首页
+  const handleBack = useCallback(() => {
+    const from = locationState?.from;
+    if (typeof from === "string" && from) {
+      navigate(from);
+    } else if (window.history.length > 1) {
+      navigate(-1);
+    } else {
+      navigate("/");
+    }
+  }, [locationState?.from, navigate]);
 
   if (isShareMode) {
     const isNotFound = error instanceof ConnectError && (error.code === Code.NotFound || error.code === Code.Unauthenticated);

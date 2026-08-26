@@ -1,7 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useState } from "react";
-import type { DeckStats, ReviewCard, ReviewDeck, ScoreResult } from "./types";
+import { queryClient } from "@/lib/query-client";
+import { kgKeys } from "@/hooks/useKgQueries";
+import type { DeckStats, MemoReviewStats, ReviewCard, ReviewDeck, ScoreResult } from "./types";
 
 /** 列出所有 deck */
 export function useReviewDecks() {
@@ -52,6 +54,30 @@ export function useDeckStats(deckId: number | null) {
   }, [refresh]);
 
   return { stats, loading, refresh };
+}
+
+/** 单篇笔记的复习卡片状态（笔记详情侧栏展示用）。
+ *  updatedAtSec：笔记更新时间（秒），变化时重新拉取以刷新过期标记 */
+export function useMemoReviewStats(memoUid: string | null, updatedAtSec?: number | null) {
+  const [stats, setStats] = useState<MemoReviewStats | null>(null);
+
+  const refresh = useCallback(async () => {
+    if (!memoUid) return;
+    try {
+      const result = await invoke<MemoReviewStats>("review_memo_stats", { memoUid });
+      setStats(result);
+    } catch {
+      setStats(null);
+    }
+    // updatedAtSec 仅作触发依赖：笔记更新后重新拉取以刷新过期标记
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [memoUid, updatedAtSec]);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  return { stats, refresh };
 }
 
 /** 获取到期卡片 */
@@ -144,6 +170,8 @@ export function useGenerateCards(deckId: number) {
           if (e.payload.deck_id === deckId) {
             setResult({ count: e.payload.count, errors: e.payload.errors });
             setGenerating(false);
+            // 新卡片改变了图谱节点的记忆统计，需刷新
+            queryClient.invalidateQueries({ queryKey: [...kgKeys.all, "nodeReviewStats"] });
           }
         },
       );
@@ -248,6 +276,69 @@ export function useCheckNewMemos(deckId: number) {
   }, [refresh]);
 
   return { newCount, refresh };
+}
+
+/** 笔记更新后重新生成该笔记的全部卡片（先删旧卡，再按当前内容生成；监听事件流） */
+export function useRegenerateMemoCards(deckId: number) {
+  const [generating, setGenerating] = useState(false);
+  const [progress, setProgress] = useState("");
+  const [result, setResult] = useState<{ count: number; errors: string[] } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const regenerate = useCallback(async (memoUid: string) => {
+    setGenerating(true);
+    setProgress("");
+    setResult(null);
+    setError(null);
+    try {
+      await invoke("review_regenerate_memo_cards", { deckId, memoUid });
+    } catch (e) {
+      setError(String(e));
+      setGenerating(false);
+    }
+  }, [deckId]);
+
+  useEffect(() => {
+    if (!generating) return;
+    let unlistenDone: UnlistenFn | null = null;
+    let unlistenError: UnlistenFn | null = null;
+    let unlistenChunk: UnlistenFn | null = null;
+
+    (async () => {
+      unlistenChunk = await listen<{ run_id: number; text: string }>(
+        "review:chunk",
+        (e) => setProgress((prev) => prev + e.payload.text),
+      );
+      unlistenDone = await listen<{ deck_id: number; run_id: number; count: number; errors: string[] }>(
+        "review:cards-generated",
+        (e) => {
+          if (e.payload.deck_id === deckId) {
+            setResult({ count: e.payload.count, errors: e.payload.errors });
+            setGenerating(false);
+            // 卡片被替换，图谱节点的记忆统计需刷新
+            queryClient.invalidateQueries({ queryKey: [...kgKeys.all, "nodeReviewStats"] });
+          }
+        },
+      );
+      unlistenError = await listen<{ deck_id: number; run_id: number; error: string }>(
+        "review:generation-error",
+        (e) => {
+          if (e.payload.deck_id === deckId) {
+            setError(e.payload.error);
+            setGenerating(false);
+          }
+        },
+      );
+    })();
+
+    return () => {
+      unlistenDone?.();
+      unlistenError?.();
+      unlistenChunk?.();
+    };
+  }, [generating, deckId]);
+
+  return { generating, progress, result, error, regenerate };
 }
 
 /** 全局到期卡片总数（跨所有 deck），自动定时刷新 */

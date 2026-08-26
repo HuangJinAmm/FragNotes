@@ -1,5 +1,4 @@
 import { useCallback } from "react";
-import { useInstance } from "@/contexts/InstanceContext";
 import type { PreviewMediaItem } from "@/utils/media-item";
 
 interface UseMemoHandlersOptions {
@@ -10,7 +9,6 @@ interface UseMemoHandlersOptions {
 
 export const useMemoHandlers = (options: UseMemoHandlersOptions) => {
   const { readonly, openEditor, openPreview } = options;
-  const { memoRelatedSetting } = useInstance();
 
   const handleMemoContentClick = useCallback(
     (e: React.MouseEvent) => {
@@ -25,15 +23,14 @@ export const useMemoHandlers = (options: UseMemoHandlersOptions) => {
     [openPreview],
   );
 
+  // 双击笔记本体进入编辑（只读笔记除外）
   const handleMemoContentDoubleClick = useCallback(
     (e: React.MouseEvent) => {
       if (readonly) return;
-      if (memoRelatedSetting.enableDoubleClickEdit) {
-        e.preventDefault();
-        openEditor();
-      }
+      e.preventDefault();
+      openEditor();
     },
-    [readonly, openEditor, memoRelatedSetting.enableDoubleClickEdit],
+    [readonly, openEditor],
   );
 
   return { handleMemoContentClick, handleMemoContentDoubleClick };

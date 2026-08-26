@@ -1,7 +1,7 @@
 import { create } from "@bufbuild/protobuf";
 import { timestampDate } from "@bufbuild/protobuf/wkt";
 import { isEqual } from "lodash-es";
-import { CheckCircleIcon, ChevronRightIcon, Code2Icon, HashIcon, ImageIcon, Link2Icon, LinkIcon, type LucideIcon, PlusIcon } from "lucide-react";
+import { CheckCircleIcon, ChevronRightIcon, Code2Icon, GraduationCapIcon, HashIcon, ImageIcon, Link2Icon, LinkIcon, type LucideIcon, PlusIcon, AlertCircleIcon, RefreshCwIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { KgNodePicker } from "@/components/KnowledgeGraph";
@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { Memo, Memo_PropertySchema } from "@/types/proto/api/v1/memo_service_pb";
 import { type Translations, useTranslate } from "@/utils/i18n";
 import { extractHeadings } from "@/utils/markdown-manipulation";
+import { useMemoReviewStats } from "@/components/Review/hooks";
 import MemoOutline from "./MemoOutline";
 
 interface Props {
@@ -54,6 +55,9 @@ const MemoDetailSidebar = ({ memo, className, onShareImageOpen }: Props) => {
   const { data: kgNodes = [] } = useMemoKgNodes(memoUid);
   const linkMemo = useLinkMemoToNode();
   const [pickerOpen, setPickerOpen] = useState(false);
+  // 笔记更新时间（秒）变化时重新拉取，刷新卡片过期标记
+  const memoUpdatedSec = memo.updateTime ? Math.floor(timestampDate(memo.updateTime).getTime() / 1000) : null;
+  const { stats: reviewStats } = useMemoReviewStats(memoUid, memoUpdatedSec);
 
   const propertyBadges = useMemo(() => {
     const badges: PropertyBadge[] = [];
@@ -137,6 +141,59 @@ const MemoDetailSidebar = ({ memo, className, onShareImageOpen }: Props) => {
               </button>
             ))}
           </div>
+        </SidebarSection>
+      )}
+
+      {reviewStats && reviewStats.total_cards > 0 && (
+        <SidebarSection label={t("review.memo-stats-section")}>
+          <button
+            type="button"
+            disabled={reviewStats.deck_id == null}
+            onClick={() =>
+              reviewStats.deck_id != null &&
+              navigate(`/review/${reviewStats.deck_id}?from=memo&memoUid=${encodeURIComponent(memoUid)}`)
+            }
+            title={
+              reviewStats.next_due_ts != null
+                ? t("review.memo-next-due", { time: new Date(reviewStats.next_due_ts * 1000).toLocaleString() })
+                : undefined
+            }
+            className="w-full inline-flex items-center gap-1.5 px-1.5 py-1 rounded-md border border-border/60 bg-muted/60 text-sm text-muted-foreground hover:bg-muted hover:text-foreground/80 transition-colors disabled:cursor-default"
+          >
+            <GraduationCapIcon className="w-3.5 h-3.5 shrink-0 opacity-60" />
+            <span className="min-w-0 flex-1 truncate text-left">
+              {t("review.memo-cards", { count: reviewStats.total_cards })}
+            </span>
+            {reviewStats.due_count > 0 ? (
+              <span className="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">
+                {t("review.memo-due", { count: reviewStats.due_count })}
+              </span>
+            ) : (
+              <span className="shrink-0 rounded bg-green-500/15 px-1.5 py-0.5 text-[10px] font-medium text-green-600 dark:text-green-400">
+                {t("review.memo-mastered")}
+              </span>
+            )}
+          </button>
+          {reviewStats.stale && (
+            <div className="flex items-center gap-1 px-1 text-xs text-amber-600 dark:text-amber-400">
+              <AlertCircleIcon className="size-3 shrink-0" />
+              <span className="min-w-0 flex-1">{t("review.memo-stale")}</span>
+              {reviewStats.deck_id != null && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    navigate(
+                      `/review/${reviewStats.deck_id}?regenerate=${encodeURIComponent(memoUid)}&from=memo&memoUid=${encodeURIComponent(memoUid)}`,
+                    )
+                  }
+                  className="shrink-0 inline-flex items-center gap-0.5 rounded border border-amber-500/40 px-1.5 py-0.5 font-medium hover:bg-amber-500/10 transition-colors"
+                >
+                  <RefreshCwIcon className="size-3" />
+                  {t("review.memo-regenerate")}
+                </button>
+              )}
+            </div>
+          )}
         </SidebarSection>
       )}
 
