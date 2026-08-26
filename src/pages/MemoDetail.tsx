@@ -7,6 +7,7 @@ import { MentionResolutionProvider } from "@/components/MemoContent/MentionResol
 import { MemoDetailSidebar, MemoDetailSidebarDrawer } from "@/components/MemoDetailSidebar";
 import MemoView from "@/components/MemoView";
 import MobileHeader from "@/components/MobileHeader";
+import { Button } from "@/components/ui/button";
 import { memoNamePrefix } from "@/helpers/resource-names";
 import useMediaQuery from "@/hooks/useMediaQuery";
 import useMemoDetailError from "@/hooks/useMemoDetailError";
@@ -111,6 +112,13 @@ const MemoDetail = () => {
       <MentionResolutionProvider contents={mentionResolutionContents}>
         <div className={cn("w-full flex flex-row justify-start items-start px-4 sm:px-6 gap-4")}>
           <div className={cn("w-full md:w-[calc(100%-15rem)]")}>
+            {/* 左上角返回：回到跳转来源页（列表 / 图谱 / 复习等），无来源则浏览器后退 */}
+            {!isShareMode && (
+              <Button variant="ghost" size="sm" className="mb-2 -ml-2 text-muted-foreground" onClick={handleBack}>
+                <ArrowLeftIcon className="size-4 mr-1" />
+                {t("common.back")}
+              </Button>
+            )}
             {parentMemo && (
               <div className="w-auto inline-block mb-2">
                 <Link
