@@ -5,6 +5,7 @@ import {
   ChevronDownIcon,
   ChevronRightIcon,
   ExternalLinkIcon,
+  GraduationCapIcon,
   HashIcon,
   PencilIcon,
   PlusIcon,
@@ -27,6 +28,7 @@ export interface KgNodeDeckStat {
   retentionRate: number;
   lastReviewedTs: number | null;
 }
+import type { KgNodeReviewStats } from "@/types/kg";
 
 export interface KgNodeData {
   id: number;
@@ -42,6 +44,8 @@ export interface KgNodeData {
   connectMode?: boolean;
   /** 标签关联牌组的卡片记忆总览（标签与牌组标签有交集时） */
   deckStats?: KgNodeDeckStat[];
+  /** 节点记忆状态（关联笔记的复习卡片聚合），无数据时为 undefined */
+  reviewStats?: KgNodeReviewStats;
   [key: string]: unknown;
 }
 
@@ -52,7 +56,8 @@ export type KgNodeAction =
   | "toggle-collapse"
   | "duplicate"
   | "delete"
-  | "view-memos";
+  | "view-memos"
+  | "review-topic";
 
 // 用完整类名字符串避免 Tailwind purge
 const colorClassMap: Record<string, string> = {
@@ -113,6 +118,12 @@ export default function KgNodeCard({ data, selected, dragging }: NodeProps) {
     { action: "add-child", icon: PlusIcon, label: "添加子节点" },
     { action: "connect", icon: Share2Icon, label: "连接到" },
     { action: "duplicate", icon: CopyIcon, label: "复制" },
+    {
+      action: "review-topic",
+      icon: GraduationCapIcon,
+      label: "复习此主题",
+      visible: nodeData.tags.length > 0,
+    },
     {
       action: "view-memos",
       icon: ExternalLinkIcon,
@@ -253,6 +264,29 @@ export default function KgNodeCard({ data, selected, dragging }: NodeProps) {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* 记忆状态徽章：复习卡片聚合（有卡片才显示） */}
+      {nodeData.reviewStats && nodeData.reviewStats.total_cards > 0 && (
+        <div className="mt-1.5">
+          {nodeData.reviewStats.due_count > 0 ? (
+            <span
+              className="inline-flex items-center gap-0.5 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400"
+              title={`共 ${nodeData.reviewStats.total_cards} 张卡片，平均稳定性 ${nodeData.reviewStats.avg_stability.toFixed(1)} 天`}
+            >
+              <GraduationCapIcon className="h-2.5 w-2.5" />
+              {nodeData.reviewStats.due_count} 张到期
+            </span>
+          ) : (
+            <span
+              className="inline-flex items-center gap-0.5 rounded bg-green-500/15 px-1.5 py-0.5 text-[10px] font-medium text-green-600 dark:text-green-400"
+              title={`共 ${nodeData.reviewStats.total_cards} 张卡片，平均稳定性 ${nodeData.reviewStats.avg_stability.toFixed(1)} 天`}
+            >
+              <GraduationCapIcon className="h-2.5 w-2.5" />
+              已巩固
+            </span>
+          )}
         </div>
       )}
 

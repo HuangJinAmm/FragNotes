@@ -1,14 +1,19 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ArrowLeftIcon, CheckIcon, ChevronRightIcon, RotateCcwIcon, XIcon } from "lucide-react";
+import { ArrowLeftIcon, CheckIcon, ChevronRightIcon, FileTextIcon, NetworkIcon, RotateCcwIcon, XIcon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { useScoreCard } from "./hooks";
 import { CARD_TYPE_LABELS, type ReviewCard, type SessionStats } from "./types";
 import { useTranslate } from "@/utils/i18n";
+import { kgKeys, useMemoKgNodes } from "@/hooks/useKgQueries";
 import { MemoMarkdownRenderer } from "@/components/MemoContent/MemoMarkdownRenderer";
 import { MemoViewContext } from "@/components/MemoView/MemoViewContext";
 import { STUB_MEMO_VIEW_CONTEXT } from "@/components/MemoPreview/MemoPreview";
+import KgMemoPreviewDialog from "@/components/KnowledgeGraph/KgMemoPreviewDialog";
+import type { Memo } from "@/types/proto/api/v1/memo_service_pb";
 
 // ==================== 互动卡片解析辅助 ====================
 
@@ -59,6 +64,8 @@ const INTERACTIVE_TYPES = ["choice", "judge", "cloze"];
 
 const CardReview = ({ deckId, onExit }: Props) => {
   const t = useTranslate();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [cards, setCards] = useState<ReviewCard[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [revealed, setRevealed] = useState(false);
@@ -86,6 +93,30 @@ const CardReview = ({ deckId, onExit }: Props) => {
 
   const currentCard = cards[currentIndex];
 
+  // 当前卡片对应笔记所属的 KG 节点（翻面后才查询，避免提前泄题）
+  const { data: memoNodes = [] } = useMemoKgNodes(
+    currentCard && !currentCard.memo_deleted && revealed ? currentCard.memo_uid : null,
+  );
+
+  // 「查看原文」弹窗预览（不离开复习页，保留会话进度）
+  const [previewMemo, setPreviewMemo] = useState<Memo | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+
+  const handleViewSource = async () => {
+    if (!currentCard || currentCard.memo_deleted) return;
+    try {
+      const raw = await invoke<Record<string, unknown> | null>("get_memo", {
+        uid: currentCard.memo_uid,
+        id: null,
+      });
+      if (!raw) return;
+      setPreviewMemo({ ...(raw as unknown as Memo), name: `memos/${raw.uid}` });
+      setPreviewOpen(true);
+    } catch (e) {
+      console.error("加载笔记失败:", e);
+    }
+  };
+
   // 切换卡片时重置状态
   useEffect(() => {
     setRevealed(false);
@@ -99,6 +130,8 @@ const CardReview = ({ deckId, onExit }: Props) => {
     const result = await score(currentCard.id, rating, deckId);
     if (result) {
       setSessionStats(result.session_stats);
+      // 评分改变了卡片到期状态，图谱节点记忆徽章需刷新（全局 staleTime 30s 内不会自动重取）
+      queryClient.invalidateQueries({ queryKey: [...kgKeys.all, "nodeReviewStats"] });
       if (currentIndex + 1 >= cards.length) {
         setFinished(true);
       } else {
@@ -490,6 +523,33 @@ const CardReview = ({ deckId, onExit }: Props) => {
         )}
       </div>
 
+      {/* 上下文跳转：查看原文 + 所属图谱节点（翻面后显示，避免提前泄题） */}
+      {revealed && (
+        <div className="mx-auto flex w-full max-w-2xl flex-wrap items-center gap-2">
+          {!currentCard.memo_deleted && (
+            <button
+              type="button"
+              onClick={handleViewSource}
+              className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground transition-colors hover:border-primary hover:text-foreground"
+            >
+              <FileTextIcon className="size-3" />
+              {t("review.view-source")}
+            </button>
+          )}
+          {memoNodes.map((node) => (
+            <button
+              key={node.id}
+              type="button"
+              onClick={() => navigate(`/knowledge-graph/${node.graph_id}?select=${node.id}`)}
+              className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground transition-colors hover:border-primary hover:text-foreground"
+            >
+              <NetworkIcon className="size-3" />
+              {node.name}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* 评分按钮 */}
       {revealed && (
         <>
@@ -515,6 +575,9 @@ const CardReview = ({ deckId, onExit }: Props) => {
           </div>
         </>
       )}
+
+      {/* 原文预览弹窗（不离开复习页） */}
+      <KgMemoPreviewDialog memo={previewMemo} open={previewOpen} onOpenChange={setPreviewOpen} />
     </div>
   );
 };

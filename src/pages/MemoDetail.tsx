@@ -1,22 +1,26 @@
 import { Code, ConnectError } from "@connectrpc/connect";
-import { ArrowUpLeftFromCircleIcon } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import { Link, Navigate, useLocation, useParams } from "react-router-dom";
+import { ArrowLeftIcon, ArrowUpLeftFromCircleIcon } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Link, Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
 import MemoCommentSection from "@/components/MemoCommentSection";
 import { MentionResolutionProvider } from "@/components/MemoContent/MentionResolutionContext";
 import { MemoDetailSidebar, MemoDetailSidebarDrawer } from "@/components/MemoDetailSidebar";
 import MemoView from "@/components/MemoView";
 import MobileHeader from "@/components/MobileHeader";
+import { Button } from "@/components/ui/button";
 import { memoNamePrefix } from "@/helpers/resource-names";
 import useMediaQuery from "@/hooks/useMediaQuery";
 import useMemoDetailError from "@/hooks/useMemoDetailError";
 import { useInfiniteMemoComments, useMemo } from "@/hooks/useMemoQueries";
 import { useSharedMemo, withShareAttachmentLinks } from "@/hooks/useMemoShareQueries";
 import { cn } from "@/lib/utils";
+import { useTranslate } from "@/utils/i18n";
 import type { Attachment } from "@/types/proto/api/v1/attachment_service_pb";
 
 const MemoDetail = () => {
   const md = useMediaQuery("md");
+  const navigate = useNavigate();
+  const t = useTranslate();
   const [shareImageDialogOpen, setShareImageDialogOpen] = useState(false);
   const params = useParams();
   const location = useLocation();
@@ -69,6 +73,18 @@ const MemoDetail = () => {
     el.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [hash, memo, comments]);
 
+  // 返回逻辑：优先用跳转来源页（state.from），无来源则浏览器后退，后退不可用回首页
+  const handleBack = useCallback(() => {
+    const from = locationState?.from;
+    if (typeof from === "string" && from) {
+      navigate(from);
+    } else if (window.history.length > 1) {
+      navigate(-1);
+    } else {
+      navigate("/");
+    }
+  }, [locationState?.from, navigate]);
+
   if (isShareMode) {
     const isNotFound = error instanceof ConnectError && (error.code === Code.NotFound || error.code === Code.Unauthenticated);
     if (isNotFound || (!isLoading && !memo)) {
@@ -96,6 +112,13 @@ const MemoDetail = () => {
       <MentionResolutionProvider contents={mentionResolutionContents}>
         <div className={cn("w-full flex flex-row justify-start items-start px-4 sm:px-6 gap-4")}>
           <div className={cn("w-full md:w-[calc(100%-15rem)]")}>
+            {/* 左上角返回：回到跳转来源页（列表 / 图谱 / 复习等），无来源则浏览器后退 */}
+            {!isShareMode && (
+              <Button variant="ghost" size="sm" className="mb-2 -ml-2 text-muted-foreground" onClick={handleBack}>
+                <ArrowLeftIcon className="size-4 mr-1" />
+                {t("common.back")}
+              </Button>
+            )}
             {parentMemo && (
               <div className="w-auto inline-block mb-2">
                 <Link

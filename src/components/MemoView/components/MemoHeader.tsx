@@ -1,6 +1,6 @@
 import { BookmarkIcon } from "lucide-react";
 import { useCallback, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useNewMemo } from "@/contexts/NewMemoContext";
 import useNavigateTo from "@/hooks/useNavigateTo";
@@ -21,15 +21,28 @@ import type { MemoHeaderProps } from "../types";
 const MemoHeader: React.FC<MemoHeaderProps> = ({ showCreator, showVisibility, showPinned }) => {
   const t = useTranslate();
   const [reactionSelectorOpen, setReactionSelectorOpen] = useState(false);
+  const location = useLocation();
 
   const { memo, creator, currentUser, parentPage, isArchived, readonly, openEditor } = useMemoViewContext();
   const { createTime, updateTime, displayTime: memoDisplayTime, isDisplayingUpdatedTime, relativeTimeFormat } = useMemoViewDerived();
   const { newMemoName } = useNewMemo();
 
   const navigateTo = useNavigateTo();
+  // 详情页内头部无需跳转
+  const isInMemoDetailPage = location.pathname.startsWith(`/${memo.name}`);
   const handleGotoMemoDetailPage = useCallback(() => {
+    if (isInMemoDetailPage) return;
     navigateTo(`/${memo.name}`, { state: { from: parentPage } });
-  }, [memo.name, parentPage, navigateTo]);
+  }, [memo.name, parentPage, navigateTo, isInMemoDetailPage]);
+
+  // 头部整体点击跳转详情；内部链接（头像/用户名）与按钮点击不冒泡接管
+  const handleHeaderClick = useCallback(
+    (e: React.MouseEvent) => {
+      if ((e.target as HTMLElement).closest("a,button")) return;
+      handleGotoMemoDetailPage();
+    },
+    [handleGotoMemoDetailPage],
+  );
 
   const { unpinMemo } = useMemoActions(memo);
 
@@ -55,11 +68,17 @@ const MemoHeader: React.FC<MemoHeaderProps> = ({ showCreator, showVisibility, sh
 
   return (
     <div className="w-full flex flex-row justify-between items-center gap-2">
-      <div className="w-auto max-w-[calc(100%-8rem)] grow flex flex-row justify-start items-center">
+      <div
+        className={cn(
+          "w-auto max-w-[calc(100%-8rem)] grow flex flex-row justify-start items-center rounded-md -ml-1 px-1 transition-colors",
+          !isInMemoDetailPage && "cursor-pointer hover:bg-muted/60",
+        )}
+        onClick={handleHeaderClick}
+      >
         {showCreator && creator ? (
-          <CreatorDisplay creator={creator} displayTime={displayTime} timeTooltip={timeTooltip} onGotoDetail={handleGotoMemoDetailPage} />
+          <CreatorDisplay creator={creator} displayTime={displayTime} timeTooltip={timeTooltip} />
         ) : (
-          <TimeDisplay displayTime={displayTime} timeTooltip={timeTooltip} onGotoDetail={handleGotoMemoDetailPage} />
+          <TimeDisplay displayTime={displayTime} timeTooltip={timeTooltip} />
         )}
         {memo.name === newMemoName && (
           <span className="ml-2 shrink-0 rounded-full bg-primary/10 px-1.5 py-0.5 text-xs font-medium leading-none text-primary">
@@ -115,10 +134,9 @@ interface CreatorDisplayProps {
   creator: User;
   displayTime: React.ReactNode;
   timeTooltip: TimeTooltipContent;
-  onGotoDetail: () => void;
 }
 
-const CreatorDisplay: React.FC<CreatorDisplayProps> = ({ creator, displayTime, timeTooltip, onGotoDetail }) => (
+const CreatorDisplay: React.FC<CreatorDisplayProps> = ({ creator, displayTime, timeTooltip }) => (
   <div className="w-full flex flex-row justify-start items-center">
     <Link className="w-auto hover:opacity-80 rounded-md transition-colors" to={`/u/${encodeURIComponent(creator.username)}`} viewTransition>
       <UserAvatar className="mr-2 shrink-0" avatarUrl={creator.avatarUrl} />
@@ -132,12 +150,7 @@ const CreatorDisplay: React.FC<CreatorDisplayProps> = ({ creator, displayTime, t
         {creator.displayName || creator.username}
       </Link>
       <TimeTooltip content={timeTooltip}>
-        <span
-          className="w-auto -mt-0.5 text-xs leading-tight text-muted-foreground select-none cursor-pointer hover:opacity-80 transition-colors text-left"
-          onClick={onGotoDetail}
-        >
-          {displayTime}
-        </span>
+        <span className="w-auto -mt-0.5 text-xs leading-tight text-muted-foreground select-none text-left">{displayTime}</span>
       </TimeTooltip>
     </div>
   </div>
@@ -161,17 +174,11 @@ const TimeTooltip = ({ children, content }: { children: React.ReactElement; cont
 interface TimeDisplayProps {
   displayTime: React.ReactNode;
   timeTooltip: TimeTooltipContent;
-  onGotoDetail: () => void;
 }
 
-const TimeDisplay: React.FC<TimeDisplayProps> = ({ displayTime, timeTooltip, onGotoDetail }) => (
+const TimeDisplay: React.FC<TimeDisplayProps> = ({ displayTime, timeTooltip }) => (
   <TimeTooltip content={timeTooltip}>
-    <span
-      className="w-auto text-sm leading-tight text-muted-foreground select-none cursor-pointer hover:text-foreground transition-colors text-left"
-      onClick={onGotoDetail}
-    >
-      {displayTime}
-    </span>
+    <span className="w-auto text-sm leading-tight text-muted-foreground select-none text-left">{displayTime}</span>
   </TimeTooltip>
 );
 

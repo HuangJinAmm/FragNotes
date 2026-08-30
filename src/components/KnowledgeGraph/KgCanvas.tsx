@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueries, useQuery } from "@tanstack/react-query";
+import toast from "react-hot-toast";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -21,6 +22,8 @@ import {
   useKgEdges,
   useKgNodes,
   useCreateKgEdge,
+  useCreateDeckFromKgNode,
+  useKgNodeReviewStats,
   useSetKgNodeCollapsed,
   useSetKgNodePosition,
 } from "@/hooks/useKgQueries";
@@ -33,7 +36,7 @@ import KgMoreNodeCard, { type KgMoreNodeData } from "./KgMoreNodeCard";
 import KgEdgeWithLabel from "./KgEdgeWithLabel";
 import KgMemoPreviewDialog from "./KgMemoPreviewDialog";
 import { MEMO_DISPLAY_COUNT } from "./constants";
-import type { KgEdge, KgNode } from "@/types/kg";
+import type { KgEdge, KgNode, KgNodeReviewStats } from "@/types/kg";
 import type { DeckWithStats } from "@/components/Review/types";
 import type { Memo } from "@/types/proto/api/v1/memo_service_pb";
 
@@ -43,6 +46,7 @@ const EMPTY_NODES: KgNode[] = [];
 const EMPTY_EDGES: KgEdge[] = [];
 const EMPTY_MEMOS: Memo[] = [];
 const EMPTY_DECKS_WITH_STATS: DeckWithStats[] = [];
+const EMPTY_REVIEW_STATS: KgNodeReviewStats[] = [];
 
 interface Props {
   graphId: number;
@@ -71,7 +75,15 @@ function KgCanvasInner({
   const setPos = useSetKgNodePosition();
   const setCollapsed = useSetKgNodeCollapsed();
   const createEdge = useCreateKgEdge();
+  const createDeckFromNode = useCreateDeckFromKgNode();
   const navigate = useNavigate();
+
+  // 节点记忆状态（关联笔记的复习卡片聚合），key = nodeId
+  const nodeIds = useMemo(() => nodes.map((n) => n.id), [nodes]);
+  const { data: reviewStats = EMPTY_REVIEW_STATS } = useKgNodeReviewStats(nodeIds);
+  const reviewStatsMap = useMemo(() => {
+    return new Map(reviewStats.map((s) => [s.node_id, s]));
+  }, [reviewStats]);
 
   // 每个节点的笔记显示数量（分页），key = nodeId
   const [memoDisplayCounts, setMemoDisplayCounts] = useState<Map<number, number>>(new Map());
@@ -278,6 +290,7 @@ function KgCanvasInner({
               hasChildren: hasChildrenMap.get(numericId) ?? false,
               connectMode: connectSourceId === numericId,
               deckStats: nodeDeckStatsMap.get(numericId),
+              reviewStats: reviewStatsMap.get(numericId),
             },
             position,
             selected: selectedNodeId === numericId,
@@ -321,7 +334,7 @@ function KgCanvasInner({
     });
 
     prevBackendPosKeysRef.current = newBackendPosKeys;
-  }, [layoutNodes, positions, hasChildrenMap, selectedNodeId, connectSourceId, setFlowNodes, nodeMemosMap, memoDisplayCounts, nodeDeckStatsMap]);
+  }, [layoutNodes, positions, hasChildrenMap, selectedNodeId, connectSourceId, setFlowNodes, nodeMemosMap, memoDisplayCounts, nodeDeckStatsMap, reviewStatsMap]);
 
   // 同步 edges：知识节点之间的边 + 父子关系边 + 笔记/更多虚拟节点与父节点的边
   useEffect(() => {
@@ -469,6 +482,17 @@ function KgCanvasInner({
         if (node) {
           setCollapsed.mutate({ id: detail.id, collapsed: !node.collapsed });
         }
+      } else if (detail.action === "review-topic") {
+        const node = nodes.find((n) => n.id === detail.id);
+        if (!node) return;
+        createDeckFromNode.mutate(detail.id, {
+          onSuccess: (deck) => {
+            toast.success(`已就绪牌组「${deck.name}」`);
+            // 携带来源上下文：牌组页返回按钮可回到该图谱节点
+            navigate(`/review/${deck.id}?from=kg&graphId=${graphId}&select=${node.id}`);
+          },
+          onError: (e) => toast.error(String(e)),
+        });
       } else if (detail.action === "view-memos") {
         const node = nodes.find((n) => n.id === detail.id);
         if (node && node.tags.length > 0) {
@@ -481,7 +505,7 @@ function KgCanvasInner({
     };
     window.addEventListener("kg-node-action", actionHandler as EventListener);
     return () => window.removeEventListener("kg-node-action", actionHandler as EventListener);
-  }, [onRequestEditNode, onNodeAction, nodes, setCollapsed, navigate]);
+  }, [onRequestEditNode, onNodeAction, nodes, setCollapsed, navigate, createDeckFromNode]);
 
   return (
     <>

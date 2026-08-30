@@ -584,7 +584,17 @@
     "answer-incorrect": "回答错误",
     "show-next": "下一部分",
     "show-all": "显示全部",
-    "disclosure-progress": "披露进度"
+    "disclosure-progress": "披露进度",
+    "view-source": "查看原文",
+    "memo-stats-section": "复习状态",
+    "memo-cards": "{{count}} 张复习卡片",
+    "memo-due": "{{count}} 张到期",
+    "memo-mastered": "已巩固",
+    "memo-next-due": "下次复习：{{time}}",
+    "memo-stale": "笔记已更新，卡片内容可能过时",
+    "memo-regenerate": "重新生成",
+    "back-to-graph": "返回图谱",
+    "back-to-memo": "返回笔记"
   },
   "router": {
     "back-to-top": "回到顶部",

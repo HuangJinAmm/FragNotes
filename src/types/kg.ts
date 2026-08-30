@@ -82,3 +82,16 @@ export interface SetKgPositionRequest {
   x: number | null;
   y: number | null;
 }
+
+/** 节点记忆状态：关联笔记（标签匹配 ∪ 手动关联）的复习卡片聚合 */
+export interface KgNodeReviewStats {
+  node_id: number;
+  /** 关联笔记数 */
+  memo_count: number;
+  /** 复习卡片总数 */
+  total_cards: number;
+  /** 已到期卡片数 */
+  due_count: number;
+  /** 平均稳定性（FSRS stability，单位：天），无卡片时为 0 */
+  avg_stability: number;
+}

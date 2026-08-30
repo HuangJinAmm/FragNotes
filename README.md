@@ -30,6 +30,8 @@
 - **附件管理**：图片、视频、音频、Motion Photo 一站式管理，含缩略图、附件库浏览、文档摘要（markitdown）。
 - **标签与树**：标签内联于 `#tag` 文本，元数据表作为缓存索引；前端支持标签树、预设、自动补全。
 - **笔记关系**：支持 `REFERENCE`（引用）与 `COMMENT`（评论）两种关系；评论通过 `parent_id` 挂载到父笔记，且不进入 FTS / embedding 索引。
+- **知识图谱**：多图谱管理，节点支持层级（父子树）、标签、颜色、图标与自定义位置；节点与笔记通过「标签匹配 ∪ 手动关联」双向关联；React Flow 画布渲染。
+- **三模块联动**：笔记 · 回顾 · 知识图谱双向闭环——图谱节点一键「复习此主题」生成牌组、节点实时显示记忆状态徽章（到期 / 已巩固 / 平均稳定性）；复习卡片可跳转来源笔记与所属图谱节点；笔记详情侧栏显示复习状态并在笔记更新后提示卡片可能过时。详见 [功能总结文档](docs/superpowers/specs/2026-08-26-memo-review-kg-linkage.md)。
 - **FSRS 复习模块**：基于 `rs-fsrs` 的间隔重复算法，从已有笔记自动生成卡片（问答 / 完形 / 多角度），含热力图、牌组统计、复习记录。
 - **AI 聊天面板**：多 Provider 配置（OpenAI 兼容），SSE 流式输出，支持工具调用、附件图片输入、上下文管理、会话持久化（V8 迁移）。
 - **AI Skills 机制**：内置 + 用户自定义 Skill（Markdown 指南文档），元数据始终注入系统提示，LLM 通过 `load_skill` 工具按需加载全文；内置 office-cli 系列 Skill（docx/pptx/xlsx/财务模型/学术论文等）。
@@ -102,19 +104,23 @@ wmi = { path = "vendor/wmi" }   # Windows 本地 patched 版本
 LocalFragNote/
 ├── core/                       # memos-core 业务逻辑库
 │   ├── config_migrations/      # app_config.db 迁移（V1）
-│   ├── migrations/             # memos.db 迁移（V1 ~ V11）
+│   ├── migrations/             # memos.db 迁移（V1 ~ V13）
 │   └── src/
 │       ├── attachment.rs       # 附件 CRUD
 │       ├── cache.rs            # moka 缓存
 │       ├── chat_session.rs     # AI 聊天会话持久化（V8 迁移）
 │       ├── config_migration.rs # app_config.db 迁移入口
 │       ├── config_store.rs     # 共享配置 Store（app_config.db）
+│       ├── kg_edge.rs          # 知识图谱边（V12 迁移）
+│       ├── kg_graph.rs         # 知识图谱图谱（V13 迁移）
+│       ├── kg_node.rs          # 知识图谱节点 + 标签 + 位置
 │       ├── markdown.rs         # comrak 渲染 / 提取
 │       ├── memo.rs             # 笔记 CRUD + FTS / 向量同步
+│       ├── memo_kg_node.rs     # 笔记 ↔ 图谱节点手动关联
 │       ├── memo_relation.rs    # 笔记关系
 │       ├── migration.rs        # refinery 迁移入口
 │       ├── reaction.rs         # 反应
-│       ├── review.rs           # FSRS 复习
+│       ├── review.rs           # FSRS 复习 + KG 联动统计
 │       ├── setting.rs          # 设置
 │       ├── skill.rs            # AI Skill 实体（V9 迁移）
 │       ├── store.rs            # Store 入口（memos.db 连接池 + 扩展注册）
@@ -131,10 +137,12 @@ LocalFragNote/
 │   │   ├── ActivityCalendar/   # 活动日历
 │   │   ├── AiChat/             # AI 聊天面板
 │   │   ├── AttachmentLibrary/  # 附件库
+│   │   ├── ColumnGrid/         # 分栏网格
+│   │   ├── KnowledgeGraph/     # 知识图谱（画布 / 节点卡片 / 边 / 编辑器 / 选择器）
 │   │   ├── LanDiscovery/       # LAN 发现与远程预览
 │   │   ├── MemoActionMenu/     # 笔记菜单 + 分享图
 │   │   ├── MemoContent/        # Markdown 渲染（含 Mermaid / KaTeX / Table）
-│   │   ├── MemoDetailSidebar/  # 详情侧栏（大纲 / 关系 / 附件 / 分享）
+│   │   ├── MemoDetailSidebar/  # 详情侧栏（大纲 / 关系 / KG 节点 / 复习状态 / 分享）
 │   │   ├── MemoEditor/         # CodeMirror 编辑器（Toolbar / hooks / services）
 │   │   ├── MemoExplorer/       # 抽屉式导航（标签 / 预设 / 快捷方式）
 │   │   ├── MemoMetadata/       # 附件 / 位置 / 关系元数据
@@ -172,6 +180,7 @@ LocalFragNote/
 │   │   │   ├── chat_session.rs # 聊天会话持久化命令
 │   │   │   ├── document_summary.rs # markitdown 文档摘要
 │   │   │   ├── import_export.rs # JSON 导入导出
+│   │   │   ├── kg.rs           # 知识图谱（图谱 / 节点 / 边 / 笔记关联）
 │   │   │   ├── lan.rs          # LAN 发现与远程预览
 │   │   │   ├── llm_runner.rs   # 本地 LLM 启动器控制
 │   │   │   ├── mcp.rs          # MCP 服务器启停
@@ -336,15 +345,42 @@ npm run dev
 - 算法：`rs-fsrs`（`core/src/review.rs`）。
 - 前端：`components/Review/`，包含牌组列表、卡片表、复习卡、热力图、统计。
 - 支持 AI 自动从已有笔记生成卡片（问答 / 完形 / 多角度）。
+- 复习卡翻面后提供「查看原文」（跳转来源笔记）与所属图谱节点跳转。
 
-### 6. AI 聊天
+### 6. 知识图谱
+
+- 数据表：`kg_node` / `kg_node_tag` / `kg_edge` / `memo_kg_node`（V12 迁移）+ `kg_graph`（V13 迁移，多图谱）。
+- 节点：层级父子树（禁止跨图父子）、标签、颜色、图标、可折叠、可保存画布位置；无 `name` 的笔记不生成虚拟节点。
+- 边：`related` / `contains` / `derived` 三种类型，仅允许编辑类型。
+- 前端：`components/KnowledgeGraph/`，React Flow 画布，路由 `/knowledge-graph/:graphId`，上次选中的图谱持久化于 localStorage。
+- 笔记与节点的关联 = 标签匹配 ∪ 手动关联（`memo_kg_node` 表，笔记详情侧栏可管理）。
+
+### 7. 三模块联动（笔记 · 回顾 · 知识图谱）
+
+完整设计见 [docs/superpowers/specs/2026-08-26-memo-review-kg-linkage.md](docs/superpowers/specs/2026-08-26-memo-review-kg-linkage.md)。
+
+| 方向 | 能力 |
+|------|------|
+| 图谱 → 复习 | 节点「复习此主题」：BFS 收集后代节点标签并集，创建/复用牌组（`主题：{节点名}`）并跳转复习 |
+| 图谱 → 笔记 | 节点「查看关联笔记」按标签筛选跳转 |
+| 图谱 ← 复习状态 | 节点卡片记忆徽章：「N 张到期」（琥珀）/「已巩固」（绿），悬停显示总卡片数与平均稳定性；批量单次聚合查询避免 N+1 |
+| 复习 → 笔记 | 卡片「查看原文」跳转笔记详情 |
+| 复习 → 图谱 | 卡片显示所属节点，点击跳转 `/knowledge-graph/:graphId?select=:nodeId` 并选中 |
+| 笔记 → 图谱 | 详情侧栏关联节点 chips + 手动关联管理 |
+| 笔记 → 复习 | 详情侧栏「复习状态」：卡片数 / 到期数 / 下次复习时间，点击跳转所属牌组 |
+| 数据同步 | 评分与生成卡片后失效图谱统计缓存；删除笔记事务内级联标记卡片 `memo_deleted`；`memo_kg_node` 由外键级联清理 |
+| 过期检测 | 笔记更新时间晚于卡片生成时间时，侧栏提示「笔记已更新，卡片内容可能过时」 |
+
+相关命令：`review_create_deck_from_kg_node` / `review_kg_node_stats` / `review_memo_stats` / `kg_list_memo_nodes`。
+
+### 8. AI 聊天
 
 - 后端：`src-tauri/src/ai/`（provider 配置、SSE 解析、工具调用、llm\_call）。
 - 命令：`commands/ai_chat.rs` 中的 `ai_chat`（流式）、`ai_abort`、`list_providers`、`save_providers_cmd`。
 - 前端：`components/AiChat/`，多 Provider 配置，支持图片附件输入。
 - Provider 配置持久化在 `app_setting` 表中。
 
-### 7. 本地 LLM 启动器
+### 9. 本地 LLM 启动器
 
 - 模块：`src-tauri/src/llm_runner/`，包含 `config.rs`（持久化）与 `runner.rs`（进程管理）。
 - 支持两种后端：
@@ -353,7 +389,7 @@ npm run dev
 - 配置存储在 `app_setting` 表的 `llm_runner_config` key，支持 `auto_start` 开机自启。
 - 退出时由 `main.rs::stop_llm_runner` 在 2 秒清理窗口内停止服务。
 
-### 8. LAN 发现与分享
+### 10. LAN 发现与分享
 
 - 模块：`src-tauri/src/lan/`（auth / client / endpoint / protocol / server）。
 - 基于 `iroh` QUIC Endpoint + `iroh-mdns-address-lookup` 实现：
@@ -369,7 +405,7 @@ npm run dev
 - 语言资源位于 `src/locales/`，覆盖 40+ 语言。
 - 主题位于 `src/themes/`：`default.css`（浅）、`default-dark.css`（深）、`paper.css`（纸面）、`green.css`（豆绿）、`sci-fi.css`（科幻），配色指南见 `COLOR_GUIDE.md`。
 
-### 10. 导入导出
+### 12. 导入导出
 
 - 命令：`commands/import_export.rs` 的 `export_memos_json` 与 `import_memos_json`。
 - 格式：JSON，便于跨实例迁移与备份。
@@ -453,7 +489,7 @@ npm run tauri icon ./public/logo2.png
 
 - **wmi patched**：`vendor/wmi` 为本地补丁版本，通过 `[patch.crates-io]` 覆盖。
 - **测试**：`core/tests/crud.rs` 为核心层 CRUD 测试；`src-tauri/tests/` 覆盖 LAN auth / protocol / 集成 与 review 核心。
-- **迁移版本**：`memos.db` 当前至 V11（V8 chat\_session / V9 skill / V10 tool / V11 drop\_shared\_config\_tables）；`app_config.db` 至 V1。
+- **迁移版本**：`memos.db` 当前至 V13（V8 chat\_session / V9 skill / V10 tool / V11 drop\_shared\_config\_tables / V12 knowledge\_graph / V13 kg\_graph）；`app_config.db` 至 V1。
 
 ***
 

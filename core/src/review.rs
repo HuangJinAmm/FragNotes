@@ -4,7 +4,7 @@
 
 use crate::error::{CoreError, CoreResult};
 use chrono::{DateTime, Utc};
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use rs_fsrs::{Card as FsrsCard, FSRS, Parameters, Rating, State as FsrsState};
 use serde::{Deserialize, Serialize};
 
@@ -321,6 +321,20 @@ pub fn delete_card(conn: &Connection, id: i32) -> CoreResult<()> {
     Ok(())
 }
 
+/// 删除某牌组下某笔记的全部卡片（含复习记录），用于笔记更新后重新生成
+pub fn delete_cards_by_memo(conn: &Connection, deck_id: i32, memo_uid: &str) -> CoreResult<()> {
+    conn.execute(
+        "DELETE FROM review_record WHERE card_id IN
+         (SELECT id FROM review_card WHERE deck_id = ?1 AND memo_uid = ?2)",
+        params![deck_id, memo_uid],
+    )?;
+    conn.execute(
+        "DELETE FROM review_card WHERE deck_id = ?1 AND memo_uid = ?2",
+        params![deck_id, memo_uid],
+    )?;
+    Ok(())
+}
+
 /// 更新卡片的 memo_deleted 标记（memo 被删除时调用）
 pub fn mark_cards_memo_deleted(conn: &Connection, memo_uid: &str) -> CoreResult<()> {
     conn.execute(
@@ -522,4 +536,246 @@ pub fn list_review_timestamps(conn: &Connection) -> CoreResult<Vec<i64>> {
         .filter_map(|r| r.ok())
         .collect();
     Ok(timestamps)
+}
+
+// ==================== KG 联动 ====================
+
+/// 节点记忆状态：聚合节点关联笔记（标签匹配 ∪ 手动关联）的复习卡片统计
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KgNodeReviewStats {
+    pub node_id: i32,
+    /// 关联笔记数
+    pub memo_count: i32,
+    /// 复习卡片总数
+    pub total_cards: i32,
+    /// 已到期卡片数
+    pub due_count: i32,
+    /// 平均稳定性（FSRS stability，单位：天），无卡片时为 0
+    pub avg_stability: f32,
+}
+
+/// 从 KG 节点创建（或复用同名的）牌组：标签取节点及其后代节点标签的并集
+///
+/// 复用规则：同名牌组存在时更新其标签为当前并集，避免重复创建
+pub fn create_deck_from_kg_node(conn: &Connection, node_id: i32) -> CoreResult<ReviewDeck> {
+    let root = crate::kg_node::get(conn, node_id)?;
+
+    // BFS 收集节点及其全部后代（kg_node 禁止跨图父子，树内遍历即可）
+    let all = crate::kg_node::list(
+        conn,
+        &crate::kg_node::FindKgNode { graph_id: None, parent_id: None, id_list: Vec::new() },
+    )?;
+    let mut ids = vec![node_id];
+    let mut visited = std::collections::HashSet::from([node_id]);
+    let mut queue = std::collections::VecDeque::from([node_id]);
+    while let Some(cur) = queue.pop_front() {
+        for n in &all {
+            if n.parent_id == Some(cur) && visited.insert(n.id) {
+                ids.push(n.id);
+                queue.push_back(n.id);
+            }
+        }
+    }
+
+    // 标签并集（按遍历顺序去重）
+    let mut tags: Vec<String> = Vec::new();
+    for id in &ids {
+        for tag in crate::kg_node::get_tags(conn, *id)? {
+            if !tags.contains(&tag) {
+                tags.push(tag);
+            }
+        }
+    }
+    if tags.is_empty() {
+        return Err(CoreError::Other(
+            "该节点及其子节点都没有标签，无法创建牌组（请先在节点上配置标签）".into(),
+        ));
+    }
+
+    // 同名牌组复用：存在则同步标签，不存在则新建
+    let deck_name = format!("主题：{}", root.name);
+    for deck in list_decks(conn)? {
+        if deck.name == deck_name {
+            return update_deck(conn, deck.id, &deck_name, &tags, deck.cards_per_memo);
+        }
+    }
+    create_deck(conn, &deck_name, &tags, 2)
+}
+
+/// 批量统计节点的记忆状态（图谱侧展示用）
+///
+/// 实现要点：所有 NORMAL 笔记与标签只加载/提取一次，
+/// 复习卡片按 memo_uid 一次 GROUP BY 查询，避免逐节点 N+1 扫描。
+pub fn kg_node_review_stats(conn: &Connection, node_ids: &[i32]) -> CoreResult<Vec<KgNodeReviewStats>> {
+    if node_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let now = Utc::now().timestamp();
+
+    // 1. memo_id → (uid, 标签集合)
+    let mut memo_info: std::collections::HashMap<i32, (String, std::collections::HashSet<String>)> =
+        std::collections::HashMap::new();
+    {
+        let mut stmt = conn.prepare(
+            "SELECT id, uid, content FROM memo WHERE row_status='NORMAL' AND parent_id IS NULL",
+        )?;
+        let rows: Vec<(i32, String, String)> = stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+            .filter_map(|r| r.ok())
+            .collect();
+        for (id, uid, content) in rows {
+            let tags: std::collections::HashSet<String> =
+                crate::markdown::extract_tags(&content).into_iter().collect();
+            memo_info.insert(id, (uid, tags));
+        }
+    }
+
+    // 2. 手动关联：node_id → memo_id 列表
+    let mut manual_links: std::collections::HashMap<i32, Vec<i32>> = std::collections::HashMap::new();
+    {
+        let mut stmt = conn.prepare("SELECT node_id, memo_id FROM memo_kg_node")?;
+        let rows: Vec<(i32, i32)> = stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+            .filter_map(|r| r.ok())
+            .collect();
+        for (nid, mid) in rows {
+            manual_links.entry(nid).or_default().push(mid);
+        }
+    }
+
+    // 3. 复习卡片按 memo_uid 聚合（一次查询）
+    struct CardAgg {
+        total: i64,
+        due: i64,
+        stab_sum: f64,
+    }
+    let mut card_agg: std::collections::HashMap<String, CardAgg> = std::collections::HashMap::new();
+    {
+        let mut stmt = conn.prepare(
+            "SELECT memo_uid, COUNT(*), SUM(CASE WHEN due <= ?1 THEN 1 ELSE 0 END), SUM(stability)
+             FROM review_card WHERE memo_deleted = 0 GROUP BY memo_uid",
+        )?;
+        let rows: Vec<(String, i64, i64, Option<f64>)> = stmt
+            .query_map(params![now], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
+        for (uid, total, due, stab_sum) in rows {
+            card_agg.insert(
+                uid,
+                CardAgg { total, due, stab_sum: stab_sum.unwrap_or(0.0) },
+            );
+        }
+    }
+
+    // 4. 逐节点聚合：标签匹配 ∪ 手动关联
+    let mut out = Vec::with_capacity(node_ids.len());
+    for &nid in node_ids {
+        let node_tags: std::collections::HashSet<String> =
+            crate::kg_node::get_tags(conn, nid)?.into_iter().collect();
+
+        let mut memo_ids: std::collections::HashSet<i32> = manual_links
+            .get(&nid)
+            .map(|v| v.iter().copied().collect())
+            .unwrap_or_default();
+        if !node_tags.is_empty() {
+            for (mid, (_, tags)) in &memo_info {
+                if !tags.is_disjoint(&node_tags) {
+                    memo_ids.insert(*mid);
+                }
+            }
+        }
+
+        let mut total_cards = 0i64;
+        let mut due_count = 0i64;
+        let mut stab_sum = 0.0f64;
+        for mid in &memo_ids {
+            if let Some((uid, _)) = memo_info.get(mid) {
+                if let Some(agg) = card_agg.get(uid) {
+                    total_cards += agg.total;
+                    due_count += agg.due;
+                    stab_sum += agg.stab_sum;
+                }
+            }
+        }
+        out.push(KgNodeReviewStats {
+            node_id: nid,
+            memo_count: memo_ids.len() as i32,
+            total_cards: total_cards as i32,
+            due_count: due_count as i32,
+            avg_stability: if total_cards > 0 {
+                (stab_sum / total_cards as f64) as f32
+            } else {
+                0.0
+            },
+        });
+    }
+    Ok(out)
+}
+
+/// 单篇笔记的复习状态（笔记详情侧栏展示用）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemoReviewStats {
+    pub total_cards: i32,
+    pub due_count: i32,
+    pub new_count: i32,
+    /// 最近一次到期时间（MIN(due)，早于当前时间即有到期卡片）
+    pub next_due_ts: Option<i64>,
+    /// 卡片数最多的牌组 id（笔记可能因标签重叠属于多个牌组）
+    pub deck_id: Option<i32>,
+    /// 笔记在卡片生成后又被编辑过（卡片内容可能过时）
+    pub stale: bool,
+}
+
+/// 统计单篇笔记的复习卡片状态
+pub fn memo_review_stats(conn: &Connection, memo_uid: &str) -> CoreResult<MemoReviewStats> {
+    let now = Utc::now().timestamp();
+
+    let (total_cards, due_count, new_count): (i32, i32, i32) = conn.query_row(
+        "SELECT COUNT(*),
+                COALESCE(SUM(CASE WHEN due <= ?2 THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN state = 0 THEN 1 ELSE 0 END), 0)
+         FROM review_card WHERE memo_uid = ?1 AND memo_deleted = 0",
+        params![memo_uid, now],
+        |r| {
+            Ok((
+                r.get::<_, i64>(0)? as i32,
+                r.get::<_, i64>(1)? as i32,
+                r.get::<_, i64>(2)? as i32,
+            ))
+        },
+    )?;
+
+    let next_due_ts: Option<i64> = conn.query_row(
+        "SELECT MIN(due) FROM review_card WHERE memo_uid = ?1 AND memo_deleted = 0",
+        params![memo_uid],
+        |r| r.get(0),
+    )?;
+
+    // 卡片数最多的牌组（GROUP BY 无行时返回 Err(NoRows) → None）
+    let deck_id: Option<i32> = conn
+        .query_row(
+            "SELECT deck_id FROM review_card WHERE memo_uid = ?1 AND memo_deleted = 0
+             GROUP BY deck_id ORDER BY COUNT(*) DESC LIMIT 1",
+            params![memo_uid],
+            |r| r.get(0),
+        )
+        .optional()?;
+
+    // 过期检测：笔记更新时间晚于最新卡片的生成时间
+    let memo_updated_ts: Option<i64> = conn
+        .query_row("SELECT updated_ts FROM memo WHERE uid = ?1", params![memo_uid], |r| r.get(0))
+        .optional()?;
+    let max_card_created_ts: Option<i64> = conn.query_row(
+        "SELECT MAX(created_ts) FROM review_card WHERE memo_uid = ?1 AND memo_deleted = 0",
+        params![memo_uid],
+        |r| r.get(0),
+    )?;
+    let stale = match (memo_updated_ts, max_card_created_ts) {
+        (Some(updated), Some(created)) => updated > created,
+        _ => false,
+    };
+
+    Ok(MemoReviewStats { total_cards, due_count, new_count, next_due_ts, deck_id, stale })
 }
