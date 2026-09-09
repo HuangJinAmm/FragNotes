@@ -6,6 +6,8 @@ import { useUpdateKgEdge } from "@/hooks/useKgQueries";
 export interface KgEdgeData {
   type: string;
   label: string;
+  /** 聚焦高亮状态：related=与选中节点直接相连（主色流动）；dimmed=有选中节点但不相连（淡出） */
+  highlight?: "related" | "dimmed";
   [key: string]: unknown;
 }
 
@@ -46,14 +48,22 @@ export default function KgEdgeWithLabel({
   // 类型标签文本（仅用于显示，不可编辑的虚拟边无文本时不显示按钮）
   const labelText = edgeData.type;
 
+  // 聚焦高亮状态
+  const isRelated = edgeData.highlight === "related";
+  const isDimmed = edgeData.highlight === "dimmed";
+  // 关联边用主题主色
+  const strokeColor = isRelated ? "var(--primary)" : style.stroke;
+
   return (
     <>
       <BaseEdge
         id={id}
         path={edgePath}
+        className="kg-edge-anim"
         style={{
-          stroke: style.stroke,
-          strokeWidth: selected ? 2.5 : 1.5,
+          stroke: strokeColor,
+          strokeWidth: isRelated || selected ? 2.5 : 1.5,
+          opacity: isDimmed ? 0.15 : 1,
           strokeDasharray: style.dashed ? "6 4" : undefined,
         }}
       />
@@ -61,7 +71,7 @@ export default function KgEdgeWithLabel({
         <BaseEdge
           id={`${id}-flow`}
           path={edgePath}
-          style={{ stroke: style.stroke, strokeWidth: 2.5, opacity: 0.7 }}
+          style={{ stroke: strokeColor, strokeWidth: 2.5, opacity: 0.7 }}
           className="kg-edge-flow"
         />
       )}
@@ -71,6 +81,8 @@ export default function KgEdgeWithLabel({
             position: "absolute",
             transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
             pointerEvents: "all",
+            opacity: isDimmed ? 0.15 : 1,
+            transition: "opacity 200ms ease",
           }}
         >
           {menuOpen && !isVirtual ? (

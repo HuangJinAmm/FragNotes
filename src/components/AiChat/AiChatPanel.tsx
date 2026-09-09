@@ -24,6 +24,7 @@ const BUTTON_SIZE = 44; // size-11
 const PANEL_WIDTH = 480;
 const PANEL_HEIGHT = 560;
 const MARGIN = 16;
+const TOP_SAFE = 48; // 自定义标题栏高度 + 间距，避免悬浮球被标题栏遮挡
 const DRAG_THRESHOLD = 5; // px，小于此距离视为点击
 const POSITION_STORAGE_KEY = "ai_chat.position";
 
@@ -54,7 +55,7 @@ function loadPosition(): Position {
 function clampPosition(pos: Position, width: number, height: number): Position {
   return {
     x: Math.max(MARGIN, Math.min(pos.x, window.innerWidth - width - MARGIN)),
-    y: Math.max(MARGIN, Math.min(pos.y, window.innerHeight - height - MARGIN)),
+    y: Math.max(TOP_SAFE, Math.min(pos.y, window.innerHeight - height - MARGIN)),
   };
 }
 

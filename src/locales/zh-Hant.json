@@ -1,4 +1,12 @@
 {
+  "titlebar": {
+    "go-back": "上一頁",
+    "go-forward": "下一頁",
+    "minimize": "最小化",
+    "maximize": "最大化",
+    "restore": "還原",
+    "close": "關閉"
+  },
   "about": {
     "blogs": "部落格",
     "description": "以隱私為核心的輕量化筆記服務，輕鬆記錄並分享您的好點子。",

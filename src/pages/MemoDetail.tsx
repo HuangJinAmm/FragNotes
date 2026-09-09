@@ -153,7 +153,7 @@ const MemoDetail = () => {
             />
           </div>
           {md && (
-            <div className="sticky top-0 left-0 shrink-0 -mt-6 w-56 h-full">
+            <div className="sticky top-10 left-0 shrink-0 -mt-6 w-56 h-full">
               <MemoDetailSidebar className="py-6" memo={displayMemo} onShareImageOpen={() => setShareImageDialogOpen(true)} />
             </div>
           )}

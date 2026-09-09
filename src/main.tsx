@@ -47,7 +47,7 @@ function Main() {
             <ViewProvider>
               <AppInitializer>
                 <RouterProvider router={router} />
-                <Toaster position="top-right" />
+                <Toaster position="top-right" containerStyle={{ top: 56 }} />
               </AppInitializer>
             </ViewProvider>
           </AuthProvider>

@@ -31,6 +31,10 @@ export interface KgNodeData {
   connectMode?: boolean;
   /** 节点记忆状态（关联笔记的复习卡片聚合），无数据时为 undefined */
   reviewStats?: KgNodeReviewStats;
+  /** 聚焦淡出：选中节点存在时，本节点不在关联集合中 */
+  dimmed?: boolean;
+  /** 聚焦高亮：本节点是选中节点的关联节点（非选中节点本身） */
+  relatedHighlight?: boolean;
   [key: string]: unknown;
 }
 
@@ -131,9 +135,12 @@ export default function KgNodeCard({ data, selected, dragging }: NodeProps) {
         // 拖拽时禁用过渡以提升流畅度，启用 GPU 合成层；非拖拽时保留过渡 + hover 轻反馈
         dragging
           ? "transition-none will-change-transform cursor-grabbing shadow-2xl"
-          : "transition-[box-shadow,transform] duration-150 ease-out hover:shadow-md",
+          : "transition-[box-shadow,transform,opacity] duration-150 ease-out hover:shadow-md",
         colorClass,
         selected ? "ring-2 ring-primary scale-[1.03]" : "",
+        // 聚焦淡出：关联节点加轻描边，无关节点淡出
+        nodeData.relatedHighlight && !selected ? "ring-1 ring-primary/50" : "",
+        nodeData.dimmed ? "opacity-30" : "",
         nodeData.connectMode ? "kg-connect-mode ring-2 ring-primary" : "",
       )}
     >

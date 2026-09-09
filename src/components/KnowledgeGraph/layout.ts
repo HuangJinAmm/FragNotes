@@ -94,13 +94,25 @@ export function toFlowNodes<T extends KgLayoutNode>(
 
 export function toFlowEdges<T extends KgLayoutEdge & { id: string; type: string; label: string }>(
   edges: T[],
+  selectedNodeId: number | null = null,
 ): Edge[] {
+  const selectedIdStr = selectedNodeId != null ? String(selectedNodeId) : null;
   return edges.map((e) => ({
     id: e.id,
     source: e.source_id,
     target: e.target_id,
     type: "kgEdge",
     label: e.label || e.type,
-    data: { type: e.type, label: e.label },
+    data: {
+      type: e.type,
+      label: e.label,
+      // 聚焦高亮：与选中节点直接相连 → related（主色流动），其余 → dimmed（淡出）
+      highlight:
+        selectedIdStr == null
+          ? undefined
+          : e.source_id === selectedIdStr || e.target_id === selectedIdStr
+            ? "related"
+            : "dimmed",
+    },
   }));
 }

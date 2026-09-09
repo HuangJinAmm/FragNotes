@@ -96,6 +96,13 @@
   animation: kg-edge-flow 1.2s linear infinite;
 }
 
+/* 聚焦高亮：边的颜色/透明度平滑过渡 */
+.kg-edge-anim {
+  transition:
+    opacity 200ms ease,
+    stroke 200ms ease;
+}
+
 .kg-success-pulse {
   animation: kg-success-pulse 1.2s ease-out forwards;
 }
