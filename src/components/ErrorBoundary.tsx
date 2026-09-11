@@ -39,7 +39,7 @@ export class ErrorBoundary extends Component<Props, State> {
       }
 
       return (
-        <div className="flex items-center justify-center min-h-screen bg-background">
+        <div className="flex items-center justify-center min-h-[calc(100vh-2.5rem)] bg-background">
           <div className="max-w-md w-full p-6 space-y-4">
             <div className="flex items-center gap-3 text-destructive">
               <AlertCircle className="w-8 h-8" />
@@ -75,7 +75,7 @@ export function ChunkLoadErrorFallback() {
   const error = useRouteError() as Error | undefined;
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-background">
+    <div className="flex items-center justify-center min-h-[calc(100vh-2.5rem)] bg-background">
       <div className="max-w-md w-full p-6 space-y-4">
         <div className="flex items-center gap-3 text-destructive">
           <AlertCircle className="w-8 h-8" />

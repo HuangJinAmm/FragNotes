@@ -46,7 +46,7 @@ const MainLayout = () => {
       {md && showMemoExplorer && (
         <div
           className={cn(
-            "sticky top-0 h-svh shrink-0 border-r border-border transition-[width] duration-200 overflow-hidden",
+            "sticky top-10 h-[calc(100svh-2.5rem)] shrink-0 border-r border-border transition-[width] duration-200 overflow-hidden",
             explorerCollapsed ? DESKTOP_EXPLORER_COLLAPSED_WIDTH_CLASS : DESKTOP_EXPLORER_EXPANDED_WIDTH_CLASS,
           )}
         >

@@ -7,6 +7,7 @@ import { MemoFilterProvider } from "./contexts/MemoFilterContext";
 import { useUserLocale } from "./hooks/useUserLocale";
 import { useUserTheme } from "./hooks/useUserTheme";
 import ToolConfirmDialog from "@/components/AiChat/ToolConfirmDialog";
+import TitleBar from "@/components/TitleBar";
 import { Routes } from "@/router";
 
 const App = () => {
@@ -60,6 +61,7 @@ const App = () => {
   return (
     <MemoFilterProvider>
       <SearchHighlightProvider>
+        <TitleBar />
         <Outlet />
       </SearchHighlightProvider>
       <ToolConfirmDialog />

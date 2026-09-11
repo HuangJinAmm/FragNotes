@@ -252,6 +252,24 @@ function KgCanvasInner({
     return layoutGraph(layoutNodes, edges.map((e) => ({ source_id: String(e.source_id), target_id: String(e.target_id) })));
   }, [layoutNodes, edges]);
 
+  // 选中节点的关联节点集合（一跳邻居：边连接 + 父子层级），null 表示未选中任何节点
+  const relatedNodeIds = useMemo(() => {
+    if (selectedNodeId == null) return null;
+    const selectedIdStr = String(selectedNodeId);
+    const set = new Set<string>([selectedIdStr]);
+    edges.forEach((e) => {
+      const s = String(e.source_id);
+      const t = String(e.target_id);
+      if (s === selectedIdStr) set.add(t);
+      else if (t === selectedIdStr) set.add(s);
+    });
+    visibleNodes.forEach((n) => {
+      if (n.id === selectedNodeId && n.parent_id != null) set.add(String(n.parent_id));
+      if (n.parent_id === selectedNodeId) set.add(String(n.id));
+    });
+    return set;
+  }, [selectedNodeId, edges, visibleNodes]);
+
   // 用 useNodesState 让 React Flow 实时管理拖拽位置
   const [flowNodes, setFlowNodes, onNodesChange] = useNodesState<Node>([]);
   const [flowEdges, setFlowEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -291,6 +309,10 @@ function KgCanvasInner({
               connectMode: connectSourceId === numericId,
               deckStats: nodeDeckStatsMap.get(numericId),
               reviewStats: reviewStatsMap.get(numericId),
+              // 聚焦淡出：选中存在时，非关联节点淡出；关联（非选中）节点加主色描边
+              dimmed: relatedNodeIds != null && !relatedNodeIds.has(n.id),
+              relatedHighlight:
+                relatedNodeIds != null && relatedNodeIds.has(n.id) && selectedNodeId !== numericId,
             },
             position,
             selected: selectedNodeId === numericId,
@@ -300,10 +322,13 @@ function KgCanvasInner({
         if (n.id.startsWith("memo:")) {
           const memoUid = n.id.slice(5);
           const memo = findMemo(nodeMemosMap, memoUid);
+          const parentId = (n.data as { parent_id: string }).parent_id;
           const memoData: KgMemoNodeData = {
             memoUid,
             content: memo?.content ?? "",
-            parentId: (n.data as { parent_id: string }).parent_id,
+            parentId,
+            // 聚焦淡出：跟随父节点的关联状态
+            dimmed: relatedNodeIds != null && !relatedNodeIds.has(parentId),
           };
           const existing = prevMap.get(n.id);
           return {
@@ -321,6 +346,8 @@ function KgCanvasInner({
         const moreData: KgMoreNodeData = {
           parentId,
           remaining: memos.length - displayCount,
+          // 聚焦淡出：跟随父节点的关联状态
+          dimmed: relatedNodeIds != null && !relatedNodeIds.has(parentId),
         };
         const existingMore = prevMap.get(n.id);
         return {
@@ -334,7 +361,7 @@ function KgCanvasInner({
     });
 
     prevBackendPosKeysRef.current = newBackendPosKeys;
-  }, [layoutNodes, positions, hasChildrenMap, selectedNodeId, connectSourceId, setFlowNodes, nodeMemosMap, memoDisplayCounts, nodeDeckStatsMap, reviewStatsMap]);
+  }, [layoutNodes, positions, hasChildrenMap, selectedNodeId, connectSourceId, setFlowNodes, nodeMemosMap, memoDisplayCounts, nodeDeckStatsMap, reviewStatsMap, relatedNodeIds]);
 
   // 同步 edges：知识节点之间的边 + 父子关系边 + 笔记/更多虚拟节点与父节点的边
   useEffect(() => {
@@ -369,8 +396,8 @@ function KgCanvasInner({
       addVirtual(n.parent_id, n.id);
     });
 
-    setFlowEdges(toFlowEdges([...kgEdges, ...virtualEdges]));
-  }, [edges, visibleNodes, layoutNodes, setFlowEdges]);
+    setFlowEdges(toFlowEdges([...kgEdges, ...virtualEdges], selectedNodeId));
+  }, [edges, visibleNodes, layoutNodes, selectedNodeId, setFlowEdges]);
 
   // 拖拽后保存位置（防抖）
   const [pendingPositions, setPendingPositions] = useState<Map<string, { x: number; y: number }>>(new Map());

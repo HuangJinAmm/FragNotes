@@ -210,7 +210,7 @@ export default function KnowledgeGraphPage() {
 
   if (graphId == null) {
     return (
-      <div className="flex h-svh w-full flex-col">
+      <div className="flex h-[calc(100svh-2.5rem)] w-full flex-col">
         <KgToolbar graphId={null} onCreateNode={handleCreateNode} onSelectGraph={handleSelectGraph} />
         <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
           请选择或创建一个图谱
@@ -220,7 +220,7 @@ export default function KnowledgeGraphPage() {
   }
 
   return (
-    <div className="flex h-svh w-full flex-col">
+    <div className="flex h-[calc(100svh-2.5rem)] w-full flex-col">
       <KgToolbar graphId={graphId} onCreateNode={handleCreateNode} onSelectGraph={handleSelectGraph} />
       {connectBanner && (
         <div className="border-b border-primary/30 bg-primary/10 px-3 py-1.5 text-xs text-primary">

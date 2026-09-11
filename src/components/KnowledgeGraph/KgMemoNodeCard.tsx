@@ -7,6 +7,8 @@ export interface KgMemoNodeData {
   content: string;
   /** 父知识节点 id（字符串） */
   parentId: string;
+  /** 聚焦淡出：父节点不在选中节点的关联集合中 */
+  dimmed?: boolean;
   [key: string]: unknown;
 }
 
@@ -17,8 +19,9 @@ export default function KgMemoNodeCard({ data, selected }: NodeProps) {
   return (
     <div
       className={cn(
-        "kg-memo-node w-[160px] rounded-md border border-dashed border-border bg-muted/30 px-2.5 py-1.5 shadow-sm transition-colors hover:bg-muted/50",
+        "kg-memo-node w-[160px] rounded-md border border-dashed border-border bg-muted/30 px-2.5 py-1.5 shadow-sm transition-[background-color,opacity] hover:bg-muted/50",
         selected && "ring-1 ring-primary",
+        memoData.dimmed && "opacity-30",
       )}
     >
       <Handle type="target" position={Position.Top} className="!h-1.5 !w-1.5 !bg-muted-foreground/40" />

@@ -1,4 +1,12 @@
 {
+  "titlebar": {
+    "go-back": "Back",
+    "go-forward": "Forward",
+    "minimize": "Minimize",
+    "maximize": "Maximize",
+    "restore": "Restore",
+    "close": "Close"
+  },
   "kg": {
     "nav-title": "Knowledge Graph",
     "new-node": "New Node",

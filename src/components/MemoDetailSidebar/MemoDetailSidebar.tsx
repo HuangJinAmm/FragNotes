@@ -68,7 +68,7 @@ const MemoDetailSidebar = ({ memo, className, onShareImageOpen }: Props) => {
   }, [property.hasLink, property.hasTaskList, property.hasCode]);
 
   return (
-    <aside className={cn("relative w-full h-auto max-h-screen overflow-auto flex flex-col gap-5", className)}>
+    <aside className={cn("relative w-full h-auto max-h-[calc(100svh-2.5rem)] overflow-auto flex flex-col gap-5", className)}>
       {headings.length > 0 && (
         <SidebarSection label={t("memo.outline")}>
           <MemoOutline headings={headings} />
