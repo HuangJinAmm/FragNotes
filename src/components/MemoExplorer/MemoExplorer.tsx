@@ -4,8 +4,8 @@ import { cn } from "@/lib/utils";
 import type { StatisticsData } from "@/types/statistics";
 import StatisticsView from "../StatisticsView";
 import FiltersSection from "./FiltersSection";
+import GraphTagsSection from "./GraphTagsSection";
 import ShortcutsSection from "./ShortcutsSection";
-import TagsSection from "./TagsSection";
 
 export type MemoExplorerContext = "home" | "explore" | "archived" | "profile";
 
@@ -14,6 +14,8 @@ export interface MemoExplorerFeatures {
   statistics?: boolean;
   shortcuts?: boolean;
   tags?: boolean;
+  /** 知识图谱标签区块 */
+  graphTags?: boolean;
 }
 
 interface Props {
@@ -22,6 +24,7 @@ interface Props {
   features?: MemoExplorerFeatures;
   statisticsData: StatisticsData;
   tagCount: Record<string, number>;
+  /** 保留字段：标签展示区块移除后暂未消费，标签筛选改由 SearchBar 标签模式承担 */
   filteredTagSet?: Set<string>;
 }
 
@@ -33,6 +36,7 @@ const getDefaultFeatures = (context: MemoExplorerContext): MemoExplorerFeatures 
         statistics: true,
         shortcuts: false, // Global explore doesn't use shortcuts
         tags: true,
+        graphTags: true,
       };
     case "archived":
       return {
@@ -40,6 +44,7 @@ const getDefaultFeatures = (context: MemoExplorerContext): MemoExplorerFeatures 
         statistics: true,
         shortcuts: false, // Archived doesn't typically use shortcuts
         tags: true,
+        graphTags: true,
       };
     case "profile":
       return {
@@ -47,6 +52,7 @@ const getDefaultFeatures = (context: MemoExplorerContext): MemoExplorerFeatures 
         statistics: true,
         shortcuts: false, // Profile view doesn't use shortcuts
         tags: true,
+        graphTags: true,
       };
     case "home":
     default:
@@ -55,12 +61,13 @@ const getDefaultFeatures = (context: MemoExplorerContext): MemoExplorerFeatures 
         statistics: true,
         shortcuts: true,
         tags: true,
+        graphTags: true,
       };
   }
 };
 
 const MemoExplorer = (props: Props) => {
-  const { className, context = "home", features: featureOverrides = {}, statisticsData, tagCount, filteredTagSet } = props;
+  const { className, context = "home", features: featureOverrides = {}, statisticsData, tagCount } = props;
   const currentUser = useCurrentUser();
 
   // Merge default features with overrides
@@ -76,11 +83,11 @@ const MemoExplorer = (props: Props) => {
         className,
       )}
     >
-      {features.search && <SearchBar />}
+      {features.search && <SearchBar tagCount={tagCount} />}
       <div className="mt-1 px-1 w-full">
         {features.statistics && <StatisticsView statisticsData={statisticsData} />}
         {features.shortcuts && currentUser && <ShortcutsSection />}
-        {features.tags && <TagsSection readonly={context === "explore"} tagCount={tagCount} filteredTagSet={filteredTagSet} />}
+        {features.graphTags && <GraphTagsSection />}
         {features.tags && <FiltersSection />}
       </div>
     </aside>
