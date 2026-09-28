@@ -25,7 +25,10 @@
     "graph-new": "新建图谱",
     "view-tag-memos": "查看标签笔记",
     "open-memo-detail": "打开笔记详情",
-    "more-memos": "+{{count}} 更多笔记"
+    "more-memos": "+{{count}} 更多笔记",
+    "tags-section": "图谱标签",
+    "tags-empty": "当前图谱的节点暂无标签",
+    "tags-select-graph": "选择图谱"
   },
   "aiChat": {
     "title": "AI 助手",
@@ -279,6 +282,7 @@
     "any-thoughts": "此刻的想法...",
     "exit-focus-mode": "退出聚焦模式",
     "focus-mode": "聚焦模式",
+    "new-note": "记笔记",
     "no-changes-detected": "未检测到更改",
     "save": "保存",
     "saving": "保存中...",
@@ -392,9 +396,11 @@
     "order-by": "排序",
     "search-placeholder": "搜索备忘录",
     "search-placeholder-semantic": "按语义搜索...",
+    "search-placeholder-tag": "输入标签搜索...",
     "search-mode-tooltip": "切换搜索模式",
     "search-mode-keyword": "关键词搜索",
     "search-mode-semantic": "语义搜索",
+    "search-mode-tag": "标签搜索",
     "shown-time": "显示时间",
     "show-less": "显示较少",
     "show-more": "查看更多",

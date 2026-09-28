@@ -25,7 +25,10 @@
     "graph-new": "New Graph",
     "view-tag-memos": "View Tagged Memos",
     "open-memo-detail": "Open Memo Detail",
-    "more-memos": "+{{count}} More Memos"
+    "more-memos": "+{{count}} More Memos",
+    "tags-section": "Graph Tags",
+    "tags-empty": "No tags on the nodes of this graph",
+    "tags-select-graph": "Select Graph"
   },
   "aiChat": {
     "title": "AI Assistant",
@@ -334,6 +337,7 @@
       "link-memo": "Link memo",
       "upload-file": "Upload file"
     },
+    "new-note": "New note",
     "no-changes-detected": "No changes detected",
     "save": "Save",
     "saving": "Saving...",
@@ -457,9 +461,11 @@
     "outline": "Outline",
     "search-placeholder": "Search memos",
     "search-placeholder-semantic": "Search by meaning...",
+    "search-placeholder-tag": "Search tags...",
     "search-mode-tooltip": "Toggle search mode",
     "search-mode-keyword": "Keyword search",
     "search-mode-semantic": "Semantic search",
+    "search-mode-tag": "Tag search",
     "shown-time": "Shown time",
     "share": {
       "active-links": "Active share links",

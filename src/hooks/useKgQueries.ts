@@ -60,13 +60,14 @@ export function useDeleteKgGraph() {
   });
 }
 
-export function useKgNodes(graphId?: number) {
+export function useKgNodes(graphId?: number, options?: { enabled?: boolean }) {
   return useQuery<KgNode[]>({
     queryKey: [...kgKeys.nodes(), graphId ?? "all"],
     queryFn: () =>
       invoke<KgNode[]>("kg_node_list", {
         req: { graph_id: graphId ?? null } as ListKgNodesRequest,
       }),
+    enabled: options?.enabled ?? true,
   });
 }
 

@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "react-hot-toast";
 import { AI_CHAT_ACTIVE_PROVIDER_STORAGE_KEY } from "@/components/AiChat/AiChatProviderPicker";
@@ -20,14 +20,16 @@ import { AudioRecorderPanel, EditorContent, EditorMetadata, FocusModeOverlay, Ta
 import { AUTO_TAG_STORAGE_KEY, FOCUS_MODE_STYLES, FORMATTING_TOOLBAR_STORAGE_KEY, SUMMARY_STORAGE_KEY } from "./constants";
 import { useAudioRecorder, useAutoSave, useFocusMode, useMemoInit } from "./hooks";
 import { documentSummaryService, errorService, isSummarizable, memoService, transcriptionService, validationService } from "./services";
-import { EditorProvider, useEditorContext, useEditorSelector } from "./state";
+import { createInitialState, EditorProvider, useEditorContext, useEditorSelector } from "./state";
 import { EditorToolbar, FormattingToolbar } from "./Toolbar";
 import type { MemoEditorProps } from "./types";
 import type { LocalFile } from "./types/attachment";
 import type { EditorController } from "./types/editorController";
 
-const MemoEditor = (props: MemoEditorProps) => (
-  <EditorProvider>
+const MemoEditor = ({ initialFocusMode, ...props }: MemoEditorProps) => (
+  // initialEditorState is only read when the provider mounts (the store instance
+  // is created once), so building it per render is harmless.
+  <EditorProvider initialEditorState={createInitialState({ focusMode: initialFocusMode })}>
     <MemoEditorImpl {...props} />
   </EditorProvider>
 );
@@ -40,6 +42,7 @@ const MemoEditorImpl: React.FC<MemoEditorProps> = ({
   autoFocus,
   placeholder,
   defaultCreateTime,
+  onFocusModeExit,
   onConfirm,
   onCancel,
 }) => {
@@ -100,6 +103,20 @@ const MemoEditorImpl: React.FC<MemoEditorProps> = ({
 
   // Focus mode management with body scroll lock
   useFocusMode(isFocusMode);
+
+  // Notify the caller only on a focus-mode *exit* (skipping the initial seed), so
+  // on-demand callers — which mount the editor with `initialFocusMode` — can
+  // unmount it once the capture window is dismissed. Covers the exit button, the
+  // backdrop click, the insert-menu toggle, and the reset after a successful save.
+  // Uses a layout effect so the caller unmounts the editor before the browser
+  // paints the inline (non-focus) layout it would otherwise flash for one frame.
+  const wasFocusModeRef = useRef(isFocusMode);
+  useLayoutEffect(() => {
+    if (wasFocusModeRef.current && !isFocusMode) {
+      onFocusModeExit?.();
+    }
+    wasFocusModeRef.current = isFocusMode;
+  }, [isFocusMode, onFocusModeExit]);
 
   // Live-sync the draft's createTime/updateTime to the calendar-derived prop.
   // Only applies in create mode; edit mode owns its own timestamps. Runs after

@@ -5,8 +5,10 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-dialog = "2"
+# 全局热键（Alt+W 唤起记笔记窗口，窗口未聚焦时同样生效）
+tauri-plugin-global-shortcut = "2"
 serde.workspace = true
 serde_json.workspace = true
 memos-core = { path = "../core" }
