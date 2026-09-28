@@ -9,6 +9,10 @@ export interface MonthNavigatorProps {
   onMonthChange: (month: string) => void;
   activityStats: Record<string, number>;
   timeBasis: MemoTimeBasis;
+  /** 日历筛选面板是否展开 */
+  isCalendarOpen: boolean;
+  /** 切换日历筛选面板展开/收起 */
+  onToggleCalendar: () => void;
 }
 
 export interface StatisticsData {
