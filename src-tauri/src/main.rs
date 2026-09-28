@@ -6,6 +6,7 @@ mod ai;
 mod embedding;
 mod error;
 mod file_storage;
+mod hotkey;
 pub mod lan;
 mod llm_runner;
 mod mcp;
@@ -13,6 +14,7 @@ mod officecli_watch;
 mod protocol;
 mod state;
 mod thumbnail;
+mod tray;
 mod workspace;
 
 /// 在 main() 最早期设置 ONNX Runtime DLL 路径
@@ -220,6 +222,8 @@ fn main() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        // 全局热键插件（Alt+W 唤起记笔记窗口，见 hotkey 模块）
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .register_uri_scheme_protocol("attachment", |ctx, request| {
             let state = ctx.app_handle().state::<AppState>();
             protocol::handle_attachment_request(state.inner(), &request)
@@ -310,7 +314,15 @@ fn main() {
                 officecli_watch: crate::officecli_watch::OfficecliWatchManager::new(),
             });
 
-            // 6. 根据 active workspace 决定后续流程
+            // 6. 初始化系统托盘（显示窗口 / 记笔记 / 退出）
+            if let Err(e) = tray::init(app.handle()) {
+                tracing::warn!("系统托盘初始化失败（应用其他功能不受影响）: {}", e);
+            }
+
+            // 6.1 注册全局热键 Alt+W（与托盘「记笔记」同一入口）
+            hotkey::init(app.handle());
+
+            // 7. 根据 active workspace 决定后续流程
             if !has_valid_workspace {
                 // 无有效 active workspace，emit "show_workspace_picker" 事件
                 tracing::info!("setup: 无有效 active workspace，emit show_workspace_picker");
@@ -388,6 +400,8 @@ fn main() {
             tracing::info!(pid = current_pid(), "setup: end");
             Ok(())
         })
+        // 关闭主窗口时隐藏到系统托盘，而不是退出应用（退出由托盘菜单触发）
+        .on_window_event(tray::on_window_event)
         .invoke_handler(tauri::generate_handler![
             ping,
             open_external_url,

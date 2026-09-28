@@ -18,6 +18,19 @@ export interface MemoEditorProps {
    * in edit mode (when `memo` is set).
    */
   defaultCreateTime?: Date;
+  /**
+   * Mount the editor already in focus mode. Used by callers that open the
+   * composer on demand as a standalone capture window (e.g. Home's floating
+   * 「记笔记」button) rather than keeping it inline in the page.
+   */
+  initialFocusMode?: boolean;
+  /**
+   * Called after focus mode is left — via the exit button, the backdrop, the
+   * insert menu toggle, or the editor reset that follows a successful save.
+   * Callers that mounted the editor with `initialFocusMode` use this to
+   * unmount it and fall back to their own trigger.
+   */
+  onFocusModeExit?: () => void;
   onConfirm?: (memoName: string) => void;
   onCancel?: () => void;
 }

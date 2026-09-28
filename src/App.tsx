@@ -4,6 +4,7 @@ import { Outlet, useNavigate } from "react-router-dom";
 import { SearchHighlightProvider } from "./components/MemoContent/SearchHighlightContext";
 import { useInstance } from "./contexts/InstanceContext";
 import { MemoFilterProvider } from "./contexts/MemoFilterContext";
+import { NewNoteWindowProvider } from "./contexts/NewNoteWindowContext";
 import { useUserLocale } from "./hooks/useUserLocale";
 import { useUserTheme } from "./hooks/useUserTheme";
 import ToolConfirmDialog from "@/components/AiChat/ToolConfirmDialog";
@@ -59,13 +60,16 @@ const App = () => {
   }, [navigate]);
 
   return (
-    <MemoFilterProvider>
-      <SearchHighlightProvider>
-        <TitleBar />
-        <Outlet />
-      </SearchHighlightProvider>
-      <ToolConfirmDialog />
-    </MemoFilterProvider>
+    // 记笔记窗口开关放在最外层：托盘事件与 Alt+W 需在任意路由下都能唤起
+    <NewNoteWindowProvider>
+      <MemoFilterProvider>
+        <SearchHighlightProvider>
+          <TitleBar />
+          <Outlet />
+        </SearchHighlightProvider>
+        <ToolConfirmDialog />
+      </MemoFilterProvider>
+    </NewNoteWindowProvider>
   );
 };
 

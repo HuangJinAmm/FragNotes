@@ -69,10 +69,19 @@ const defaultState: EditorState = {
   recorderBusy: false,
 };
 
-/** Fresh initial state for a mounting editor. */
-export function createInitialState(): EditorState {
+/**
+ * Fresh initial state for a mounting editor.
+ *
+ * `options.focusMode` seeds the editor directly in focus mode, used by callers
+ * that open the editor as a standalone capture window (e.g. Home's floating
+ * button) instead of the always-visible inline composer.
+ */
+export function createInitialState(options?: { focusMode?: boolean }): EditorState {
   return {
     ...defaultState,
-    ui: { ...defaultState.ui },
+    ui: {
+      ...defaultState.ui,
+      isFocusMode: options?.focusMode ?? defaultState.ui.isFocusMode,
+    },
   };
 }
