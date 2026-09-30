@@ -12,8 +12,9 @@ import {
   CircleIcon,
   CheckCircle2Icon,
   UserIcon,
+  WrenchIcon,
 } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import { MemoMarkdownRenderer } from "@/components/MemoContent/MemoMarkdownRenderer";
 import { MemoViewContext } from "@/components/MemoView/MemoViewContext";
@@ -220,6 +221,7 @@ function ToolCallCard({
   error,
   badges,
   children,
+  variant = "card",
 }: {
   /// header 标题（工具名 / 已本地化的描述）
   name: ReactNode;
@@ -233,6 +235,8 @@ function ToolCallCard({
   badges?: ReactNode;
   /// 展开区自定义内容；提供时忽略默认的「参数 + 输出」渲染
   children?: ReactNode;
+  /// card：独立卡片（带边框底色）；plain：嵌套在折叠面板内的无边框行
+  variant?: "card" | "plain";
 }) {
   const t = useTranslate();
   // 错误默认展开以保证可见性，其余默认折叠
@@ -276,14 +280,17 @@ function ToolCallCard({
         ? t("aiChat.tool.denied")
         : firstLineSummary(output);
 
+  const isPlain = variant === "plain";
+
   return (
-    <div className={cn("my-1 overflow-hidden rounded border text-xs", palette.box)}>
+    <div className={cn("overflow-hidden text-xs", !isPlain && cn("my-1 rounded border", palette.box))}>
       <button
         type="button"
         onClick={() => setCollapsed((c) => !c)}
         aria-expanded={!collapsed}
         className={cn(
-          "flex w-full items-center gap-1.5 px-2 py-1 text-left transition-colors hover:bg-foreground/5",
+          "flex w-full items-center gap-1.5 text-left transition-colors hover:bg-foreground/5",
+          isPlain ? "rounded px-1 py-0.5" : "px-2 py-1",
           palette.header,
         )}
       >
@@ -300,7 +307,7 @@ function ToolCallCard({
         )}
       </button>
       {!collapsed && (
-        <div className="space-y-1.5 px-2 pb-1.5 pt-0.5">
+        <div className={cn("space-y-1.5 pt-0.5", isPlain ? "pb-1 pl-5 pr-0.5" : "px-2 pb-1.5")}>
           {children ?? (
             <>
               {argsJson ? (
@@ -331,9 +338,198 @@ function ToolCallCard({
   );
 }
 
+/// 工具消息是否执行失败（用于分组面板的失败计数与自动展开）
+function isToolMessageError(msg: ChatMessage): boolean {
+  const result = msg.toolResult;
+  if (!result || typeof result !== "object") return false;
+  const r = result as { error?: unknown; denied?: unknown };
+  if (r.denied === true) return false;
+  return typeof r.error === "string" && r.error.length > 0;
+}
+
+/// 单条工具消息的渲染分派：
+/// - update_plan → 任务清单进度卡片（独立展示，不进折叠面板）
+/// - load_skill → 蓝色卡片 + skill 正文
+/// - 用户工具   → 工具名 + 权限徽章
+/// - 其余内置工具 → 工具名 + 参数 / 结果
+function ToolMessageRecord({ msg, variant = "card" }: { msg: ChatMessage; variant?: "card" | "plain" }) {
+  const t = useTranslate();
+  // 工具参数格式化为 JSON 字符串（用于展开显示）
+  const argsJson = formatJson(msg.toolArgs);
+  // 工具显示名：优先 toolName，其次从 content 解析
+  const displayName = msg.toolName ?? extractToolName(msg.content) ?? "tool";
+
+  // update_plan：渲染任务清单进度卡片
+  if (msg.toolName === "update_plan") {
+    const result = msg.toolResult as PlanResult | null;
+    return <PlanCard result={result} />;
+  }
+
+  // load_skill：蓝色卡片 + 折叠的 skill 正文
+  if (msg.toolName === "load_skill") {
+    const result = msg.toolResult as { id?: string; name?: string; body?: string; error?: string } | null;
+    return (
+      <ToolCallCard
+        name={`📖 ${t("aiChat.skill.loaded", { name: result?.name ?? "skill" })}`}
+        status={result?.error ? "error" : "success"}
+        tone="blue"
+        error={result?.error}
+        variant={variant}
+      >
+        {result?.error ? (
+          <p className="whitespace-pre-wrap break-all font-mono text-red-600 dark:text-red-400">{result.error}</p>
+        ) : (
+          <div className="prose prose-sm dark:prose-invert max-w-none">
+            <ReactMarkdown>{result?.body ?? ""}</ReactMarkdown>
+          </div>
+        )}
+      </ToolCallCard>
+    );
+  }
+
+  // 用户工具：result 中包含 tool_name 和 permission
+  const userToolResult = msg.toolResult as {
+    tool_name?: string;
+    permission?: string;
+    denied?: boolean;
+    error?: string;
+    output?: string;
+    exit_code?: number;
+  } | null;
+
+  if (userToolResult?.tool_name && userToolResult?.permission) {
+    const perm = userToolResult.permission as ToolPermission;
+    const isDenied = userToolResult.denied === true;
+    const hasError = !isDenied && typeof userToolResult.error === "string" && userToolResult.error.length > 0;
+    return (
+      <ToolCallCard
+        name={userToolResult.tool_name}
+        status={isDenied ? "denied" : hasError ? "error" : "success"}
+        argsJson={argsJson}
+        error={hasError ? userToolResult.error : undefined}
+        output={isDenied ? undefined : userToolResult.output}
+        variant={variant}
+        // 权限徽章 + 拒绝标记（常驻 header）
+        badges={
+          <>
+            <span className={cn("shrink-0 rounded px-1.5 py-0.5 text-[10px]", PERMISSION_BADGE_COLORS[perm])}>
+              {PERMISSION_LABELS[perm]}
+            </span>
+            {isDenied && (
+              <span className="shrink-0 text-yellow-700 dark:text-yellow-300">{t("aiChat.tool.denied")}</span>
+            )}
+          </>
+        }
+      />
+    );
+  }
+
+  // 默认工具（内置工具如 create_memo / update_memo 等）
+  // 后端工具执行失败时以 { error: "..." } 形式返回（见 ai_chat.rs）
+  const builtinError =
+    msg.toolResult && typeof msg.toolResult === "object"
+      ? (msg.toolResult as { error?: unknown }).error
+      : undefined;
+  const builtinErrorText = typeof builtinError === "string" && builtinError.length > 0 ? builtinError : undefined;
+  return (
+    <ToolCallCard
+      name={`🔧 ${displayName}`}
+      status={builtinErrorText ? "error" : "success"}
+      argsJson={argsJson}
+      error={builtinErrorText}
+      output={builtinErrorText ? undefined : formatJson(msg.toolResult) || undefined}
+      variant={variant}
+    />
+  );
+}
+
+/// 一次「工具调用批次」的折叠面板：把本轮连续产生的所有工具调用记录收进一个面板，
+/// 折叠态显示调用次数 + 工具名摘要（同名合并为 `name ×N`）+ 失败数，
+/// 展开后逐条展示每次调用。存在失败调用时默认展开，保证错误可见。
+function ToolGroupPanel({ msgs }: { msgs: ChatMessage[] }) {
+  const t = useTranslate();
+  const failed = msgs.filter(isToolMessageError).length;
+  const [collapsed, setCollapsed] = useState(failed === 0);
+
+  // 流式过程中新增了失败的调用时自动展开，避免错误被折叠隐藏
+  useEffect(() => {
+    if (failed > 0) setCollapsed(false);
+  }, [failed]);
+
+  // 工具名摘要：同名合并计数，如 "create_memo ×2, update_memo"
+  const nameSummary = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const m of msgs) {
+      const name = m.toolName ?? extractToolName(m.content) ?? "tool";
+      counts.set(name, (counts.get(name) ?? 0) + 1);
+    }
+    return [...counts.entries()].map(([name, n]) => (n > 1 ? `${name} ×${n}` : name)).join(", ");
+  }, [msgs]);
+
+  return (
+    <div className="my-1 overflow-hidden rounded border border-gray-200 bg-gray-50 text-xs dark:border-gray-800 dark:bg-gray-900/30">
+      <button
+        type="button"
+        onClick={() => setCollapsed((c) => !c)}
+        aria-expanded={!collapsed}
+        className="flex w-full items-center gap-1.5 px-2 py-1 text-left text-muted-foreground transition-colors hover:bg-foreground/5"
+      >
+        {collapsed ? (
+          <ChevronRightIcon className="size-3 shrink-0" />
+        ) : (
+          <ChevronDownIcon className="size-3 shrink-0" />
+        )}
+        <WrenchIcon className="size-3 shrink-0" />
+        <span className="shrink-0 font-medium">{t("aiChat.tool.groupTitle", { count: msgs.length })}</span>
+        {collapsed && nameSummary && (
+          <span className="ml-1 min-w-0 flex-1 truncate font-normal text-muted-foreground/80">{nameSummary}</span>
+        )}
+        {failed > 0 && (
+          <span className="ml-auto shrink-0 rounded bg-red-100 px-1.5 py-0.5 text-[10px] text-red-700 dark:bg-red-900/50 dark:text-red-300">
+            {t("aiChat.tool.groupFailed", { count: failed })}
+          </span>
+        )}
+      </button>
+      {!collapsed && (
+        <div className="space-y-0.5 px-2 pb-1.5 pt-0.5">
+          {msgs.map((m) => (
+            <ToolMessageRecord key={m.id} msg={m} variant="plain" />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/// 渲染分组：连续的工具消息合并为一个折叠面板，其余消息各成一组
+type MessageGroup =
+  | { kind: "message"; key: string; msg: ChatMessage }
+  | { kind: "tools"; key: string; msgs: ChatMessage[] };
+
+/// 将消息列表切分为渲染分组。
+/// update_plan 不参与合并：它是持续刷新的任务进度看板，需要始终保持可见。
+function groupMessages(messages: ChatMessage[]): MessageGroup[] {
+  const groups: MessageGroup[] = [];
+  for (const msg of messages) {
+    const groupable = msg.role === "tool" && msg.toolName !== "update_plan";
+    const last = groups[groups.length - 1];
+    if (groupable) {
+      if (last?.kind === "tools") {
+        last.msgs.push(msg);
+      } else {
+        groups.push({ kind: "tools", key: msg.id, msgs: [msg] });
+      }
+    } else {
+      groups.push({ kind: "message", key: msg.id, msg });
+    }
+  }
+  return groups;
+}
+
 export function AiChatMessages({ messages }: AiChatMessagesProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const t = useTranslate();
+  // 连续的工具消息合并为一个折叠面板
+  const groups = useMemo(() => groupMessages(messages), [messages]);
 
   // 自动滚动到底部
   useEffect(() => {
@@ -380,102 +576,16 @@ export function AiChatMessages({ messages }: AiChatMessagesProps) {
 
   return (
     <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-2 space-y-3">
-      {messages.map((msg) => {
-        if (msg.role === "tool") {
-          // 工具参数格式化为 JSON 字符串（用于展开显示）
-          const argsJson = formatJson(msg.toolArgs);
-          // 工具显示名：优先 toolName，其次从 content 解析
-          const displayName = msg.toolName ?? extractToolName(msg.content) ?? "tool";
-
-          // update_plan：渲染任务清单进度卡片
-          if (msg.toolName === "update_plan") {
-            const result = msg.toolResult as PlanResult | null;
-            return <PlanCard key={msg.id} result={result} />;
-          }
-
-          // load_skill：蓝色卡片 + 折叠的 skill 正文
-          if (msg.toolName === "load_skill") {
-            const result = msg.toolResult as { id?: string; name?: string; body?: string; error?: string } | null;
-            return (
-              <ToolCallCard
-                key={msg.id}
-                name={`📖 ${t("aiChat.skill.loaded", { name: result?.name ?? "skill" })}`}
-                status={result?.error ? "error" : "success"}
-                tone="blue"
-                error={result?.error}
-              >
-                {result?.error ? (
-                  <p className="whitespace-pre-wrap break-all font-mono text-red-600 dark:text-red-400">
-                    {result.error}
-                  </p>
-                ) : (
-                  <div className="prose prose-sm dark:prose-invert max-w-none">
-                    <ReactMarkdown>{result?.body ?? ""}</ReactMarkdown>
-                  </div>
-                )}
-              </ToolCallCard>
-            );
-          }
-
-          // 用户工具：result 中包含 tool_name 和 permission
-          const userToolResult = msg.toolResult as {
-            tool_name?: string;
-            permission?: string;
-            denied?: boolean;
-            error?: string;
-            output?: string;
-            exit_code?: number;
-          } | null;
-
-          if (userToolResult?.tool_name && userToolResult?.permission) {
-            const perm = userToolResult.permission as ToolPermission;
-            const isDenied = userToolResult.denied === true;
-            const hasError =
-              !isDenied && typeof userToolResult.error === "string" && userToolResult.error.length > 0;
-            return (
-              <ToolCallCard
-                key={msg.id}
-                name={userToolResult.tool_name}
-                status={isDenied ? "denied" : hasError ? "error" : "success"}
-                argsJson={argsJson}
-                error={hasError ? userToolResult.error : undefined}
-                output={isDenied ? undefined : userToolResult.output}
-                // 权限徽章 + 拒绝标记（常驻 header）
-                badges={
-                  <>
-                    <span className={cn("shrink-0 rounded px-1.5 py-0.5 text-[10px]", PERMISSION_BADGE_COLORS[perm])}>
-                      {PERMISSION_LABELS[perm]}
-                    </span>
-                    {isDenied && (
-                      <span className="shrink-0 text-yellow-700 dark:text-yellow-300">
-                        {t("aiChat.tool.denied")}
-                      </span>
-                    )}
-                  </>
-                }
-              />
-            );
-          }
-
-          // 默认工具（内置工具如 create_memo / update_memo 等）
-          // 后端工具执行失败时以 { error: "..." } 形式返回（见 ai_chat.rs）
-          const builtinError =
-            msg.toolResult && typeof msg.toolResult === "object"
-              ? (msg.toolResult as { error?: unknown }).error
-              : undefined;
-          const builtinErrorText =
-            typeof builtinError === "string" && builtinError.length > 0 ? builtinError : undefined;
-          return (
-            <ToolCallCard
-              key={msg.id}
-              name={`🔧 ${displayName}`}
-              status={builtinErrorText ? "error" : "success"}
-              argsJson={argsJson}
-              error={builtinErrorText}
-              output={builtinErrorText ? undefined : formatJson(msg.toolResult) || undefined}
-            />
+      {groups.map((group) => {
+        if (group.kind === "tools") {
+          // 单次工具调用直接展示为独立卡片，多次调用才收进折叠面板
+          return group.msgs.length === 1 ? (
+            <ToolMessageRecord key={group.key} msg={group.msgs[0]} />
+          ) : (
+            <ToolGroupPanel key={group.key} msgs={group.msgs} />
           );
         }
+        const msg = group.msg;
         const isUser = msg.role === "user";
         // assistant 非空文本回复完成（非错误、非流式）时，在气泡下方显示复制按钮
         const showCopyButton =
@@ -486,7 +596,7 @@ export function AiChatMessages({ messages }: AiChatMessagesProps) {
           msg.content.length > 0;
         return (
           <div
-            key={msg.id}
+            key={group.key}
             className={cn("flex gap-2", isUser ? "flex-row-reverse" : "flex-row")}
           >
             <div className="shrink-0 mt-0.5">

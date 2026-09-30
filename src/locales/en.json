@@ -87,7 +87,9 @@
       "denied": "Denied",
       "parameters": "Parameters",
       "output": "Output",
-      "noParameters": "No parameters"
+      "noParameters": "No parameters",
+      "groupTitle": "Tool calls ({{count}})",
+      "groupFailed": "{{count}} failed"
     }
   },
   "lan": {

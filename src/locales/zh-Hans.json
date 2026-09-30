@@ -87,7 +87,9 @@
       "denied": "已拒绝",
       "parameters": "参数",
       "output": "输出",
-      "noParameters": "无参数"
+      "noParameters": "无参数",
+      "groupTitle": "工具调用（{{count}}）",
+      "groupFailed": "{{count}} 个失败"
     }
   },
   "lan": {
