@@ -4,6 +4,8 @@ import {
   CheckIcon,
   ChevronDownIcon,
   ChevronRightIcon,
+  CircleSlashIcon,
+  CircleXIcon,
   CopyIcon,
   ListTodoIcon,
   LoaderIcon,
@@ -11,7 +13,7 @@ import {
   CheckCircle2Icon,
   UserIcon,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import { MemoMarkdownRenderer } from "@/components/MemoContent/MemoMarkdownRenderer";
 import { MemoViewContext } from "@/components/MemoView/MemoViewContext";
@@ -58,15 +60,22 @@ function CopyMarkdownButton({ text }: { text: string }) {
   );
 }
 
-/// 将工具参数格式化为 JSON 字符串（用于展开显示）
-function formatArgsJson(args: unknown): string {
-  if (args === undefined || args === null) return "";
-  if (typeof args === "string") return args;
+/// 将任意值格式化为可读 JSON 字符串（工具参数 / 工具结果展开显示用）
+function formatJson(value: unknown): string {
+  if (value === undefined || value === null) return "";
+  if (typeof value === "string") return value;
   try {
-    return JSON.stringify(args, null, 2);
+    return JSON.stringify(value, null, 2);
   } catch {
-    return String(args);
+    return String(value);
   }
+}
+
+/// 折叠态单行摘要：取首个非空行并截断，避免「折叠后什么都看不到」
+function firstLineSummary(text: string | undefined, max = 120): string {
+  if (!text) return "";
+  const line = (text.split("\n").find((l) => l.trim().length > 0) ?? "").trim();
+  return line.length > max ? `${line.slice(0, max)}…` : line;
 }
 
 /// 从 content "🔧 name(...)" 中提取工具名（兼容旧消息）
@@ -195,6 +204,133 @@ function ThinkingBox({ reasoning, streaming }: { reasoning: string; streaming: b
   );
 }
 
+/// 工具调用状态
+type ToolCallStatus = "success" | "error" | "denied";
+
+/// 统一的可折叠工具调用记录卡片：
+/// - header 常驻：展开箭头 + 状态图标 + 工具名 + 徽章；折叠时追加一行结果摘要
+/// - body 展开：参数 JSON + 输出（可用 children 覆盖，如 skill 正文 markdown）
+/// - 仅「错误」结果默认展开以保证可见性，其余默认折叠，避免记录刷屏
+function ToolCallCard({
+  name,
+  status,
+  tone,
+  argsJson,
+  output,
+  error,
+  badges,
+  children,
+}: {
+  /// header 标题（工具名 / 已本地化的描述）
+  name: ReactNode;
+  status: ToolCallStatus;
+  /// 卡片配色，默认由 status 推导；blue 用于 skill 等特殊类别
+  tone?: "neutral" | "blue";
+  argsJson?: string;
+  output?: string;
+  error?: string;
+  /// header 中的附加徽章（权限等级、拒绝标记等）
+  badges?: ReactNode;
+  /// 展开区自定义内容；提供时忽略默认的「参数 + 输出」渲染
+  children?: ReactNode;
+}) {
+  const t = useTranslate();
+  // 错误默认展开以保证可见性，其余默认折叠
+  const [collapsed, setCollapsed] = useState(status !== "error");
+
+  const palette =
+    status === "error"
+      ? {
+          box: "border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/30",
+          header: "text-red-700 dark:text-red-300",
+        }
+      : status === "denied"
+        ? {
+            box: "border-yellow-200 bg-yellow-50 dark:border-yellow-900 dark:bg-yellow-950/30",
+            header: "text-yellow-700 dark:text-yellow-300",
+          }
+        : tone === "blue"
+          ? {
+              box: "border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950/30",
+              header: "text-blue-700 dark:text-blue-300",
+            }
+          : {
+              box: "border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-900/30",
+              header: "text-muted-foreground",
+            };
+
+  const statusIcon =
+    status === "error" ? (
+      <CircleXIcon className="size-3 shrink-0 text-red-500" />
+    ) : status === "denied" ? (
+      <CircleSlashIcon className="size-3 shrink-0 text-yellow-500" />
+    ) : (
+      <CheckCircle2Icon className="size-3 shrink-0 text-emerald-500" />
+    );
+
+  // 折叠态摘要：错误显示错误信息，拒绝显示「已拒绝」，否则显示输出首行
+  const summary =
+    status === "error"
+      ? firstLineSummary(error)
+      : status === "denied"
+        ? t("aiChat.tool.denied")
+        : firstLineSummary(output);
+
+  return (
+    <div className={cn("my-1 overflow-hidden rounded border text-xs", palette.box)}>
+      <button
+        type="button"
+        onClick={() => setCollapsed((c) => !c)}
+        aria-expanded={!collapsed}
+        className={cn(
+          "flex w-full items-center gap-1.5 px-2 py-1 text-left transition-colors hover:bg-foreground/5",
+          palette.header,
+        )}
+      >
+        {collapsed ? (
+          <ChevronRightIcon className="size-3 shrink-0" />
+        ) : (
+          <ChevronDownIcon className="size-3 shrink-0" />
+        )}
+        {statusIcon}
+        <span className="min-w-0 max-w-[70%] truncate font-medium">{name}</span>
+        {badges}
+        {collapsed && summary && (
+          <span className="ml-1 min-w-0 flex-1 truncate font-normal text-muted-foreground">{summary}</span>
+        )}
+      </button>
+      {!collapsed && (
+        <div className="space-y-1.5 px-2 pb-1.5 pt-0.5">
+          {children ?? (
+            <>
+              {argsJson ? (
+                <div>
+                  <div className="text-[10px] text-muted-foreground">{t("aiChat.tool.parameters")}</div>
+                  <pre className="mt-0.5 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded bg-background/50 p-1.5 font-mono text-[11px]">
+                    {argsJson}
+                  </pre>
+                </div>
+              ) : (
+                <p className="text-muted-foreground italic">{t("aiChat.tool.noParameters")}</p>
+              )}
+              {error ? (
+                <p className="whitespace-pre-wrap break-all font-mono text-red-600 dark:text-red-400">{error}</p>
+              ) : output ? (
+                <div>
+                  <div className="text-[10px] text-muted-foreground">{t("aiChat.tool.output")}</div>
+                  <pre className="mt-0.5 max-h-48 overflow-auto whitespace-pre-wrap break-all font-mono">
+                    {output}
+                  </pre>
+                </div>
+              ) : null}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function AiChatMessages({ messages }: AiChatMessagesProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const t = useTranslate();
@@ -247,7 +383,7 @@ export function AiChatMessages({ messages }: AiChatMessagesProps) {
       {messages.map((msg) => {
         if (msg.role === "tool") {
           // 工具参数格式化为 JSON 字符串（用于展开显示）
-          const argsJson = formatArgsJson(msg.toolArgs);
+          const argsJson = formatJson(msg.toolArgs);
           // 工具显示名：优先 toolName，其次从 content 解析
           const displayName = msg.toolName ?? extractToolName(msg.content) ?? "tool";
 
@@ -257,24 +393,27 @@ export function AiChatMessages({ messages }: AiChatMessagesProps) {
             return <PlanCard key={msg.id} result={result} />;
           }
 
-          // load_skill：保持原有特殊渲染（蓝色卡片 + skill body）
+          // load_skill：蓝色卡片 + 折叠的 skill 正文
           if (msg.toolName === "load_skill") {
             const result = msg.toolResult as { id?: string; name?: string; body?: string; error?: string } | null;
             return (
-              <div key={msg.id} className="my-1 rounded border border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950/30 p-2 text-xs">
-                <details>
-                  <summary className="cursor-pointer font-medium text-blue-700 dark:text-blue-300">
-                    📖 {t("aiChat.skill.loaded", { name: result?.name ?? "skill" })}
-                  </summary>
-                  <div className="mt-2 prose prose-sm dark:prose-invert max-w-none">
-                    {result?.error ? (
-                      <p className="text-red-600">{result.error}</p>
-                    ) : (
-                      <ReactMarkdown>{result?.body ?? ""}</ReactMarkdown>
-                    )}
+              <ToolCallCard
+                key={msg.id}
+                name={`📖 ${t("aiChat.skill.loaded", { name: result?.name ?? "skill" })}`}
+                status={result?.error ? "error" : "success"}
+                tone="blue"
+                error={result?.error}
+              >
+                {result?.error ? (
+                  <p className="whitespace-pre-wrap break-all font-mono text-red-600 dark:text-red-400">
+                    {result.error}
+                  </p>
+                ) : (
+                  <div className="prose prose-sm dark:prose-invert max-w-none">
+                    <ReactMarkdown>{result?.body ?? ""}</ReactMarkdown>
                   </div>
-                </details>
-              </div>
+                )}
+              </ToolCallCard>
             );
           }
 
@@ -291,73 +430,50 @@ export function AiChatMessages({ messages }: AiChatMessagesProps) {
           if (userToolResult?.tool_name && userToolResult?.permission) {
             const perm = userToolResult.permission as ToolPermission;
             const isDenied = userToolResult.denied === true;
+            const hasError =
+              !isDenied && typeof userToolResult.error === "string" && userToolResult.error.length > 0;
             return (
-              <div
+              <ToolCallCard
                 key={msg.id}
-                className={`my-1 rounded border p-2 text-xs ${
-                  isDenied
-                    ? "border-yellow-200 bg-yellow-50 dark:border-yellow-900 dark:bg-yellow-950/30"
-                    : userToolResult.error
-                    ? "border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/30"
-                    : "border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-900/30"
-                }`}
-              >
-                {/* 工具名 + 权限徽章 + 拒绝标记（始终可见） */}
-                <div className="mb-1 flex items-center gap-2">
-                  <span className="font-medium">{userToolResult.tool_name}</span>
-                  <span className={`rounded px-1.5 py-0.5 text-[10px] ${PERMISSION_BADGE_COLORS[perm]}`}>
-                    {PERMISSION_LABELS[perm]}
-                  </span>
-                  {isDenied && (
-                    <span className="text-yellow-700 dark:text-yellow-300">
-                      {t("aiChat.tool.denied")}
+                name={userToolResult.tool_name}
+                status={isDenied ? "denied" : hasError ? "error" : "success"}
+                argsJson={argsJson}
+                error={hasError ? userToolResult.error : undefined}
+                output={isDenied ? undefined : userToolResult.output}
+                // 权限徽章 + 拒绝标记（常驻 header）
+                badges={
+                  <>
+                    <span className={cn("shrink-0 rounded px-1.5 py-0.5 text-[10px]", PERMISSION_BADGE_COLORS[perm])}>
+                      {PERMISSION_LABELS[perm]}
                     </span>
-                  )}
-                </div>
-                {/* 折叠的参数区域 */}
-                {argsJson && (
-                  <details className="mb-1">
-                    <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
-                      {t("aiChat.tool.parameters")}
-                    </summary>
-                    <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded bg-background/50 p-1.5 font-mono text-[11px]">
-                      {argsJson}
-                    </pre>
-                  </details>
-                )}
-                {/* 输出/错误（始终可见） */}
-                {userToolResult.error ? (
-                  <p className="font-mono text-red-600 dark:text-red-400">{userToolResult.error}</p>
-                ) : (
-                  <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all font-mono">
-                    {userToolResult.output ?? ""}
-                  </pre>
-                )}
-              </div>
+                    {isDenied && (
+                      <span className="shrink-0 text-yellow-700 dark:text-yellow-300">
+                        {t("aiChat.tool.denied")}
+                      </span>
+                    )}
+                  </>
+                }
+              />
             );
           }
 
           // 默认工具（内置工具如 create_memo / update_memo 等）
+          // 后端工具执行失败时以 { error: "..." } 形式返回（见 ai_chat.rs）
+          const builtinError =
+            msg.toolResult && typeof msg.toolResult === "object"
+              ? (msg.toolResult as { error?: unknown }).error
+              : undefined;
+          const builtinErrorText =
+            typeof builtinError === "string" && builtinError.length > 0 ? builtinError : undefined;
           return (
-            <div key={msg.id} className="my-1 rounded border border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-900/30 p-2 text-xs">
-              <details>
-                <summary className="cursor-pointer font-medium text-muted-foreground hover:text-foreground">
-                  🔧 {displayName}
-                </summary>
-                <div className="mt-1.5 space-y-1.5">
-                  {argsJson ? (
-                    <div>
-                      <div className="text-[10px] text-muted-foreground">{t("aiChat.tool.parameters")}</div>
-                      <pre className="mt-0.5 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded bg-background/50 p-1.5 font-mono text-[11px]">
-                        {argsJson}
-                      </pre>
-                    </div>
-                  ) : (
-                    <p className="text-muted-foreground italic">{t("aiChat.tool.noParameters")}</p>
-                  )}
-                </div>
-              </details>
-            </div>
+            <ToolCallCard
+              key={msg.id}
+              name={`🔧 ${displayName}`}
+              status={builtinErrorText ? "error" : "success"}
+              argsJson={argsJson}
+              error={builtinErrorText}
+              output={builtinErrorText ? undefined : formatJson(msg.toolResult) || undefined}
+            />
           );
         }
         const isUser = msg.role === "user";

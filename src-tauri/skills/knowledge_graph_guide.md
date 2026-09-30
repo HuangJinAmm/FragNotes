@@ -1,8 +1,8 @@
 ---
 id: b-knowledge-graph-guide
 name: 知识图谱构建指南
-description: 指导 AI agent 使用知识图谱工具创建图谱、节点和关系的最佳实践
-tools: [list_kg_graphs, create_kg_graph, list_kg_nodes, create_kg_node, set_kg_node_tags, link_kg_nodes]
+description: 指导 AI agent 使用知识图谱工具创建图谱、节点和关系的最佳实践；规划节点时必须同步规划标签，优先对齐已有标签
+tools: [list_tags, list_kg_graphs, create_kg_graph, list_kg_nodes, create_kg_node, set_kg_node_tags, link_kg_nodes]
 ---
 
 # 知识图谱构建指南
@@ -11,12 +11,40 @@ tools: [list_kg_graphs, create_kg_graph, list_kg_nodes, create_kg_node, set_kg_n
 
 | 工具 | 用途 |
 |---|---|
+| `list_tags` | 列出用户已有标签及使用次数（标签规划的依据） |
 | `list_kg_graphs` | 列出所有知识图谱 |
 | `create_kg_graph` | 创建新图谱 |
-| `list_kg_nodes` | 列出图谱中的节点 |
+| `list_kg_nodes` | 列出图谱中的节点（含 tags/color/icon/parent_id），也可用来查其他图谱已用的节点标签 |
 | `create_kg_node` | 创建节点（含标签、父节点、颜色、图标） |
-| `set_kg_node_tags` | 修改节点标签 |
+| `set_kg_node_tags` | 修改节点标签（全量替换） |
 | `link_kg_nodes` | 在两个节点间创建关系边 |
+
+## 核心原则：规划节点时必须同步规划标签
+
+标签是节点接入笔记体系的入口——**标签名必须与笔记里的 `#tag` 完全一致**（不带 `#`），否则笔记不会自动挂到该节点下。所以规划阶段的产物是「节点 + 标签」的配对清单，而不是先建节点、再随手补标签。
+
+### 标签规划三步
+
+1. **先取已有标签**：调用 `list_tags` 拿到用户现有标签全集（按使用次数降序）。必要时用 `list_kg_nodes` 查看其他图谱已用过的节点标签，保持跨图谱一致。
+2. **逐节点对齐已有标签**：
+   - 已有标签与节点语义完全一致 → 直接使用该标签**原名**，不要改写大小写、单复数或中英文写法。
+   - 已有标签是节点的别名、上位/下位概念或口语写法 → **仍使用已有标签**，不要新建近义标签（`RAG` 与 `检索增强生成` 应视为同一个标签）。
+   - 多个已有标签都能对应 → 选使用次数更高、语义更贴近的那个。
+3. **确实没有可用标签时，才为节点新建一个最贴切的标签**：
+   - 选最能概括该节点、且用户日后最可能写进笔记里的词（判断标准：用户会不会给这类笔记打这个 `#tag`）。
+   - 2-6 个字，纯文本，不带 `#`、不带空格，且不与任何已有标签近义。
+   - 单个节点通常 1-3 个标签；一张新图谱新建的标签建议控制在 3-5 个以内，宁少勿滥。
+
+### 决策表
+
+| 情况 | 处理 |
+|---|---|
+| 已有标签与节点同名/同义 | 使用已有标签原名 |
+| 已有标签是别名、中英混用、单复数差异 | 使用已有标签原名，不新建 |
+| 无任何已有标签可用 | 为节点新建一个最贴切的标签 |
+| 节点只是组织性分组（如「监督学习」「其他」这类纯目录） | 只给根节点和关键节点打标签，不必每个分组都造标签 |
+
+自造一堆与笔记无关、零命中的标签会让图谱变成孤岛。**宁可少打标签，也不要与已有标签冲突。**
 
 ## 典型工作流
 
@@ -24,6 +52,7 @@ tools: [list_kg_graphs, create_kg_graph, list_kg_nodes, create_kg_node, set_kg_n
 
 ```
 用户："帮我建一个机器学习知识体系图谱"
+→ list_tags → 先摸清已有标签，作为后续节点标签的对齐基线
 → create_kg_graph(name="机器学习知识体系", description="涵盖 ML 核心概念与关联")
 → 返回 graph_id
 ```
@@ -50,13 +79,21 @@ create_kg_node(graph_id=X, name="监督学习", parent_id=根节点id)
 
 ### 3. 用标签关联笔记
 
-节点标签会**自动关联**带相同 `#tag` 的笔记。标签不带 `#` 前缀。
+节点标签会**自动关联**带相同 `#tag` 的笔记，标签不带 `#` 前缀。传入的标签必须来自上面「标签规划」的对齐结果：
 
 ```
+list_tags → {"tags":[{"tag":"RAG","count":12},{"tag":"向量检索","count":5}]}
+
+节点「RAG」      → 对齐到已有标签 ["RAG"]，不新建
+节点「向量检索」  → 对齐到已有标签 ["向量检索"]
+节点「召回策略」  → 无可用标签 → 新建最贴切标签 ["召回"]
+
 create_kg_node(graph_id=X, name="RAG", tags=["RAG"], parent_id=Y)
 ```
 
 这样所有包含 `#RAG` 标签的笔记会自动显示为该节点的子节点。
+
+如果发现已建节点的标签与已有标签重复或拼写不一致，用 `set_kg_node_tags` 修正；注意它是**全量替换**，要把需要保留的标签一并传入。
 
 ### 4. 用边建立跨层级关系
 
@@ -73,11 +110,20 @@ link_kg_nodes(source_id=分类节点id, target_id=逻辑回归节点id, edge_typ
 
 ## 最佳实践
 
-1. **先规划再创建**：复杂图谱先用 `update_plan` 制定步骤
-2. **层级优先**：优先用 `parent_id` 建立层级，跨层级关联才用 `link_kg_nodes`
-3. **标签与笔记对齐**：标签名应与笔记中 `#tag` 一致（不带 `#`）
-4. **节点命名简短**：节点名称控制在 2-10 字，描述放 `description` 字段
-5. **颜色语义化**：可用颜色区分节点类别（如 blue=概念、green=技术、red=问题）
+1. **先规划再创建**：复杂图谱先用 `update_plan` 制定步骤，规划内容必须包含每个节点的标签
+2. **标签先对齐再用**：先 `list_tags`，能对齐已有标签就绝不新建
+3. **无标签可用才自建**：为节点挑一个最贴切、用户最可能写进笔记的标签
+4. **层级优先**：优先用 `parent_id` 建立层级，跨层级关联才用 `link_kg_nodes`
+5. **标签与笔记对齐**：标签名与笔记中 `#tag` 完全一致（不带 `#`），注意大小写与中英文写法
+6. **节点命名简短**：节点名称控制在 2-10 字，描述放 `description` 字段
+7. **颜色语义化**：可用颜色区分节点类别（如 blue=概念、green=技术、red=问题）
+
+## 常见错误
+
+- 先 `create_kg_node` 再考虑要不要标签 → 无标签节点不会关联任何笔记
+- 自造与已有标签近义的新标签（已有 `RAG` 却又建 `检索增强生成`）
+- 给纯组织性分组也强造标签，产生大量零命中标签
+- 调用 `set_kg_node_tags` 时只传新增标签，把原有标签覆盖丢失（全量替换语义）
 
 ## 示例：从用户笔记构建知识图谱
 
@@ -85,11 +131,17 @@ link_kg_nodes(source_id=分类节点id, target_id=逻辑回归节点id, edge_typ
 用户："根据我的笔记帮我建一个 RAG 相关的知识图谱"
 
 步骤：
-1. list_tags → 查看用户现有标签
+1. list_tags → 已有标签：RAG(12)、向量检索(5)、Embedding(3)、Prompt(2)
 2. list_memos(query="RAG") → 了解用户的 RAG 笔记内容
-3. create_kg_graph(name="RAG 知识体系")
-4. 创建根节点：create_kg_node(graph_id=X, name="RAG", tags=["RAG"])
-5. 创建子节点：create_kg_node(graph_id=X, name="向量检索", tags=["向量检索"], parent_id=根id)
-6. 创建子节点：create_kg_node(graph_id=X, name="Embedding", tags=["Embedding"], parent_id=根id)
-7. 建立关联：link_kg_nodes(source_id=向量检索id, target_id=Embeddingid, edge_type="related")
+3. 规划「节点 + 标签」，逐个对齐已有标签：
+   - RAG        → 命中已有标签 ["RAG"]
+   - 向量检索   → 命中已有标签 ["向量检索"]
+   - Embedding  → 命中已有标签 ["Embedding"]
+   - 召回策略   → 无可用标签，新建最贴切标签 ["召回"]
+4. create_kg_graph(name="RAG 知识体系") → 返回 graph_id
+5. 创建根节点：create_kg_node(graph_id=X, name="RAG", tags=["RAG"])
+6. 创建子节点：create_kg_node(graph_id=X, name="向量检索", tags=["向量检索"], parent_id=根id)
+7. 创建子节点：create_kg_node(graph_id=X, name="Embedding", tags=["Embedding"], parent_id=根id)
+8. 创建子节点：create_kg_node(graph_id=X, name="召回策略", tags=["召回"], parent_id=根id)
+9. 建立关联：link_kg_nodes(source_id=向量检索id, target_id=Embeddingid, edge_type="related")
 ```
