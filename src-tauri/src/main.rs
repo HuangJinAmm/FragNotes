@@ -506,6 +506,7 @@ fn main() {
             commands::lan::lan_copy_memo_to_local,
             // review
             commands::review::review_list_decks,
+            commands::review::review_list_decks_with_stats,
             commands::review::review_create_deck,
             commands::review::review_update_deck,
             commands::review::review_delete_deck,

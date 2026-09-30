@@ -1,6 +1,7 @@
 import { useEffect, useState, type ComponentType } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import {
+  BookOpenCheckIcon,
   ChevronDownIcon,
   ChevronRightIcon,
   ExternalLinkIcon,
@@ -15,6 +16,18 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NODE_COLOR_PALETTE } from "./constants";
+
+/** 节点关联牌组的卡片记忆总览（掌握情况） */
+export interface KgNodeDeckStat {
+  deckId: number;
+  deckName: string;
+  dueCount: number;
+  newCount: number;
+  total: number;
+  learned: number;
+  retentionRate: number;
+  lastReviewedTs: number | null;
+}
 import type { KgNodeReviewStats } from "@/types/kg";
 
 export interface KgNodeData {
@@ -29,6 +42,8 @@ export interface KgNodeData {
   hasChildren?: boolean;
   /** 是否处于"连接到"模式（节点作为源，等待选择目标） */
   connectMode?: boolean;
+  /** 标签关联牌组的卡片记忆总览（标签与牌组标签有交集时） */
+  deckStats?: KgNodeDeckStat[];
   /** 节点记忆状态（关联笔记的复习卡片聚合），无数据时为 undefined */
   reviewStats?: KgNodeReviewStats;
   /** 聚焦淡出：选中节点存在时，本节点不在关联集合中 */
@@ -217,6 +232,45 @@ export default function KgNodeCard({ data, selected, dragging }: NodeProps) {
           {nodeData.tags.length > 3 && (
             <span className="text-[10px] text-muted-foreground">+{nodeData.tags.length - 3}</span>
           )}
+        </div>
+      )}
+
+      {/* 关联牌组的卡片记忆总览（掌握情况） */}
+      {nodeData.deckStats && nodeData.deckStats.length > 0 && (
+        <div className="mt-1.5 space-y-1">
+          {nodeData.deckStats.map((ds) => {
+            const progress = ds.total > 0 ? Math.round((ds.learned / ds.total) * 100) : 0;
+            const mastery =
+              ds.lastReviewedTs == null ? "—" : `${Math.round(ds.retentionRate * 100)}%`;
+            return (
+              <div
+                key={ds.deckId}
+                className="rounded bg-muted/50 px-1.5 py-1"
+                title={`牌组「${ds.deckName}」记忆总览：已学 ${ds.learned}/${ds.total}，今日到期 ${ds.dueCount}，新卡 ${ds.newCount}，掌握率 ${mastery}`}
+              >
+                <div className="flex items-center justify-between gap-1 text-[10px] leading-tight">
+                  <span className="flex min-w-0 items-center gap-0.5 text-muted-foreground">
+                    <BookOpenCheckIcon className="h-2.5 w-2.5 shrink-0" />
+                    <span className="truncate">{ds.deckName}</span>
+                  </span>
+                  <span className="shrink-0 font-medium text-green-600">{mastery}</span>
+                </div>
+                <div className="mt-1 h-1 overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full rounded-full bg-green-500/80 transition-[width] duration-300"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+                <div className="mt-0.5 flex items-center gap-1.5 text-[9px] leading-tight text-muted-foreground">
+                  <span>
+                    已学 {ds.learned}/{ds.total}
+                  </span>
+                  {ds.dueCount > 0 && <span className="text-orange-600">到期 {ds.dueCount}</span>}
+                  {ds.newCount > 0 && <span className="text-blue-600">新 {ds.newCount}</span>}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 

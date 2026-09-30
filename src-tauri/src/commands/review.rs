@@ -2,7 +2,7 @@
 
 use crate::error::{IpcError, IpcResult};
 use crate::state::AppState;
-use memos_core::review::{self, DeckStats, ReviewCard, ReviewDeck};
+use memos_core::review::{self, DeckStats, DeckWithStats, ReviewCard, ReviewDeck};
 use serde::{Deserialize, Serialize};
 
 use crate::ai::provider::{load_providers, ProviderConfig};
@@ -41,6 +41,15 @@ pub struct SessionStats {
 pub fn review_list_decks(state: tauri::State<'_, AppState>) -> IpcResult<Vec<ReviewDeck>> {
     let store = state.store();
     Ok(store.with_conn(|c| review::list_decks(c))?)
+}
+
+/// 列出所有牌组及其统计（用于知识图谱节点按标签匹配展示掌握情况）
+#[tauri::command]
+pub fn review_list_decks_with_stats(
+    state: tauri::State<'_, AppState>,
+) -> IpcResult<Vec<DeckWithStats>> {
+    let store = state.store();
+    Ok(store.with_conn(|c| review::list_decks_with_stats(c))?)
 }
 
 #[tauri::command]
