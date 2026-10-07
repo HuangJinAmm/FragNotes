@@ -18,7 +18,8 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 ort = { version = "=2.0.0-rc.12", default-features = false, features = ["ndarray", "load-dynamic", "api-24"] }
 tokenizers = { version = "0.21", default-features = false, features = ["onig"] }
 ndarray = "0.17"
-ureq = "2"
+# charset 特性：按 Content-Type 声明的字符集解码响应（正确解析 GBK 等非 UTF-8 网页）
+ureq = { version = "2", features = ["charset"] }
 dirs = "5"
 rusqlite = { version = "0.32", features = ["bundled"] }
 iroh = "1"
@@ -29,6 +30,10 @@ tokio = { version = "1", features = ["full"] }
 tokio-stream = "0.1"
 chrono = "0.4"
 markitdown = "0.1.11"
+# 网页正文提取（Mozilla Readability 的 Rust 移植）
+dom_smoothie = "0.18"
+# HTML → Markdown（turndown.js 的 Rust 实现）
+htmd = "0.5"
 uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]

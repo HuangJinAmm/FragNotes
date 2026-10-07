@@ -321,6 +321,22 @@ pub fn tool_definitions(user_tools: &[Tool]) -> Vec<Value> {
                 }
             }
         }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "fetch_url",
+                "description": "访问一个 URL（http/https）并读取其内容。HTML 网页会用可读性算法提取正文并转成 Markdown；纯文本/JSON/XML 原样返回。 \
+适用于查阅在线文档、文章、博客、API 响应等，返回结果含 markdown、title、url、status 字段。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "url": { "type": "string", "description": "要访问的完整 URL，必须以 http:// 或 https:// 开头" },
+                        "max_chars": { "type": "number", "description": "返回正文的最大字符数，默认 12000，范围 500-50000" }
+                    },
+                    "required": ["url"]
+                }
+            }
+        }),
     ];
     // 追加用户工具定义
     for ut in user_tools.iter().filter(|t| t.enabled) {
@@ -379,6 +395,7 @@ pub fn execute_tool(
         "create_kg_node" => execute_create_kg_node(args, store),
         "set_kg_node_tags" => execute_set_kg_node_tags(args, store),
         "link_kg_nodes" => execute_link_kg_nodes(args, store),
+        "fetch_url" => execute_fetch_url(args),
         other => {
             // 内置工具名已知但没匹配上（不应该发生）
             if memos_core::tool::BUILTIN_TOOL_NAMES.contains(&other) {
@@ -1266,6 +1283,174 @@ fn execute_officecli(args: &Value, state: &AppState) -> memos_core::CoreResult<V
     })
 }
 
+/// fetch_url 默认返回字符数
+const DEFAULT_FETCH_MAX_CHARS: usize = 12_000;
+/// fetch_url 允许的最大返回字符数
+const MAX_FETCH_MAX_CHARS: usize = 50_000;
+/// fetch_url 使用的 User-Agent（部分站点会拒绝无 UA 的请求）
+const FETCH_USER_AGENT: &str =
+    "Mozilla/5.0 (compatible; LocalFragNote/0.1; +https://github.com/HuangJinAmm/LocalFragNote)";
+
+/// fetch_url 工具：访问 URL 并把网页正文转成 Markdown（或纯文本）
+fn execute_fetch_url(args: &Value) -> memos_core::CoreResult<Value> {
+    let url = args
+        .get("url")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| memos_core::CoreError::Other("缺少 url 参数".into()))?
+        .to_string();
+
+    let lower = url.to_ascii_lowercase();
+    if !lower.starts_with("http://") && !lower.starts_with("https://") {
+        return Ok(json!({
+            "error": "仅支持 http:// 或 https:// 开头的 URL",
+            "tool_name": "fetch_url",
+        }));
+    }
+
+    let max_chars = args
+        .get("max_chars")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(DEFAULT_FETCH_MAX_CHARS as i64)
+        .clamp(500, MAX_FETCH_MAX_CHARS as i64) as usize;
+
+    // 1. 下载（ureq 为阻塞式客户端，本工具运行在 spawn_blocking 线程上）
+    let agent = ureq::AgentBuilder::new()
+        .timeout_connect(Duration::from_secs(10))
+        .timeout(Duration::from_secs(30))
+        .user_agent(FETCH_USER_AGENT)
+        .build();
+
+    let resp = match agent.get(&url).call() {
+        Ok(r) => r,
+        Err(ureq::Error::Status(code, _)) => {
+            return Ok(json!({
+                "error": format!("HTTP {code}"),
+                "status": code,
+                "url": url,
+                "tool_name": "fetch_url",
+            }));
+        }
+        Err(e) => {
+            return Ok(json!({
+                "error": format!("请求失败: {e}"),
+                "url": url,
+                "tool_name": "fetch_url",
+            }));
+        }
+    };
+
+    let status = resp.status();
+    let content_type = resp
+        .header("Content-Type")
+        .unwrap_or("")
+        .to_ascii_lowercase();
+
+    // ureq 默认限制 10MB，超出返回错误；charset 特性会自动按声明解码
+    let body = match resp.into_string() {
+        Ok(b) => b,
+        Err(e) => {
+            return Ok(json!({
+                "error": format!("读取响应失败: {e}"),
+                "status": status,
+                "url": url,
+                "tool_name": "fetch_url",
+            }));
+        }
+    };
+
+    // 2. 转换：HTML 走正文提取 + Markdown；文本类原样返回
+    let is_html = content_type.is_empty() || content_type.contains("html");
+    let is_text = content_type.starts_with("text/")
+        || content_type.contains("json")
+        || content_type.contains("xml")
+        || content_type.contains("javascript");
+
+    let (title, mut markdown) = if is_html {
+        html_to_markdown(&body, &url)
+    } else if is_text {
+        (None, body.trim().to_string())
+    } else {
+        return Ok(json!({
+            "error": format!("不支持的内容类型: {content_type}（仅支持 HTML / 纯文本 / JSON / XML）"),
+            "status": status,
+            "url": url,
+            "content_type": content_type,
+            "tool_name": "fetch_url",
+        }));
+    };
+
+    let truncated = markdown.chars().count() > max_chars;
+    if truncated {
+        markdown = markdown.chars().take(max_chars).collect();
+    }
+
+    Ok(json!({
+        "url": url,
+        "status": status,
+        "content_type": content_type,
+        "title": title,
+        "truncated": truncated,
+        "markdown": markdown,
+        "tool_name": "fetch_url",
+    }))
+}
+
+/// HTML → Markdown：优先用 readability 提取正文，失败时退回整页转换
+fn html_to_markdown(html: &str, url: &str) -> (Option<String>, String) {
+    // 1. Readability 提取正文（失败或提取为空则退回整页 HTML）
+    let (title, source_html) = match dom_smoothie::Readability::new(html, Some(url), None) {
+        Ok(mut reader) => match reader.parse() {
+            Ok(article) => {
+                let title = article.title.to_string();
+                if article.content.trim().is_empty() {
+                    (None, html.to_string())
+                } else {
+                    (Some(title).filter(|t| !t.trim().is_empty()), article.content.to_string())
+                }
+            }
+            Err(e) => {
+                tracing::debug!("fetch_url: readability 解析失败，退回整页转换: {e}");
+                (None, html.to_string())
+            }
+        },
+        Err(e) => {
+            tracing::debug!("fetch_url: readability 初始化失败，退回整页转换: {e}");
+            (None, html.to_string())
+        }
+    };
+
+    // 2. HTML → Markdown
+    match htmd::convert(&source_html) {
+        Ok(md) if !md.trim().is_empty() => (title, md),
+        Ok(_) => (title, fallback_html_to_markdown(html)),
+        Err(e) => {
+            tracing::warn!("fetch_url: htmd 转换失败，改用 markitdown 兜底: {e}");
+            (title, fallback_html_to_markdown(html))
+        }
+    }
+}
+
+/// 兜底转换：复用已依赖的 markitdown（内部 html2md）
+fn fallback_html_to_markdown(html: &str) -> String {
+    let md = markitdown::MarkItDown::new();
+    let options = markitdown::model::ConversionOptions {
+        file_extension: Some(".html".into()),
+        url: None,
+        llm_client: None,
+        llm_model: None,
+    };
+    match md.convert_bytes(html.as_bytes(), Some(options)) {
+        Ok(Some(r)) => r.text_content,
+        Ok(None) => String::new(),
+        Err(e) => {
+            tracing::warn!("fetch_url: markitdown 兜底转换失败: {e}");
+            String::new()
+        }
+    }
+}
+
 /// 生成 16 字符 hex ID
 fn uuid_like() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -1459,7 +1644,7 @@ mod tests {
     #[test]
     fn test_tool_definitions_count() {
         let defs = tool_definitions(&[]);
-        assert_eq!(defs.len(), 18);
+        assert_eq!(defs.len(), 19);
         let names: Vec<&str> = defs
             .iter()
             .map(|d| d["function"]["name"].as_str().unwrap())
@@ -1482,6 +1667,7 @@ mod tests {
         assert!(names.contains(&"create_kg_node"));
         assert!(names.contains(&"set_kg_node_tags"));
         assert!(names.contains(&"link_kg_nodes"));
+        assert!(names.contains(&"fetch_url"));
     }
 
     #[test]
@@ -1505,7 +1691,7 @@ mod tests {
             ..enabled.clone()
         };
         let defs = tool_definitions(&[enabled, disabled]);
-        assert_eq!(defs.len(), 19); // 18 built-in + 1 enabled user tool
+        assert_eq!(defs.len(), 20); // 19 built-in + 1 enabled user tool
         let names: Vec<&str> = defs
             .iter()
             .map(|d| d["function"]["name"].as_str().unwrap())
@@ -1869,5 +2055,45 @@ mod tests {
             &store,
         );
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_fetch_url_rejects_non_http_scheme() {
+        let result = execute_fetch_url(&json!({"url": "file:///etc/passwd"})).unwrap();
+        assert!(result["error"].as_str().unwrap().contains("http"));
+    }
+
+    #[test]
+    fn test_fetch_url_missing_url() {
+        assert!(execute_fetch_url(&json!({})).is_err());
+    }
+
+    #[test]
+    fn test_html_to_markdown_extracts_article() {
+        let html = r#"<html><head><title>测试标题</title></head><body>
+            <nav>导航栏</nav>
+            <article><h1>正文标题</h1><p>这是正文段落，包含足够长的内容以便可读性算法识别为正文。</p>
+            <ul><li>要点一</li><li>要点二</li></ul></article>
+            <footer>页脚</footer>
+        </body></html>"#;
+        let (title, md) = html_to_markdown(html, "https://example.com/a");
+        assert!(md.contains("正文段落"));
+        assert!(md.contains("要点一"));
+        assert!(title.is_none() || title.unwrap().contains("测试标题"));
+    }
+
+    /// 真实网络验证（默认忽略）：cargo test -p frag-note-app -- --ignored fetch_url_live
+    #[test]
+    #[ignore]
+    fn fetch_url_live() {
+        let result = execute_fetch_url(&json!({
+            "url": "https://example.com",
+            "max_chars": 2000
+        }))
+        .unwrap();
+        println!("{}", serde_json::to_string_pretty(&result).unwrap());
+        assert_eq!(result["status"].as_i64().unwrap(), 200);
+        assert_eq!(result["title"].as_str().unwrap(), "Example Domain");
+        assert!(!result["markdown"].as_str().unwrap().trim().is_empty());
     }
 }
