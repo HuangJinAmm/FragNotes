@@ -1,7 +1,10 @@
 //! AI agent 工具：定义 OpenAI function-calling schema + 执行分发
 
 use crate::ai::pending_confirmations::PendingConfirmations;
+use crate::commands::setting::load_storage_config;
+use crate::file_storage;
 use crate::state::AppState;
+use memos_core::attachment::{CreateAttachment, STORAGE_TYPE_LOCAL};
 use memos_core::markdown;
 use memos_core::memo::{CreateMemo, FindMemo, UpdateMemo};
 use memos_core::memo_relation::{UpsertMemoRelation};
@@ -14,6 +17,7 @@ use memos_core::kg_node::{self, UpsertKgNode, FindKgNode};
 use memos_core::kg_edge;
 use memos_core::{ConfigStore, Store};
 use serde_json::{json, Value};
+use std::io::Read;
 use std::process::Stdio;
 use std::time::Duration;
 use tauri::async_runtime;
@@ -337,6 +341,24 @@ pub fn tool_definitions(user_tools: &[Tool]) -> Vec<Value> {
                 }
             }
         }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "download_file",
+                "description": "从网络下载一个文件（文档 / 图片 / zip 压缩包等）并保存到当前工作空间的附件目录，附件会出现在应用的附件列表中。 \
+返回 attachment_id / attachment_uid / filename / type / size 等字段。 \
+注意：若目标 URL 是网页且需要阅读正文，请改用 fetch_url；本工具会原样保存文件，不做正文提取。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "url": { "type": "string", "description": "要下载的完整 URL，必须以 http:// 或 https:// 开头" },
+                        "filename": { "type": "string", "description": "保存的文件名（含扩展名）。不传则依次按 Content-Disposition 响应头、URL 路径末段、内容类型推断" },
+                        "max_bytes": { "type": "number", "description": "允许的最大字节数，默认 33554432（32MB），上限 209715200（200MB）" }
+                    },
+                    "required": ["url"]
+                }
+            }
+        }),
     ];
     // 追加用户工具定义
     for ut in user_tools.iter().filter(|t| t.enabled) {
@@ -396,6 +418,7 @@ pub fn execute_tool(
         "set_kg_node_tags" => execute_set_kg_node_tags(args, store),
         "link_kg_nodes" => execute_link_kg_nodes(args, store),
         "fetch_url" => execute_fetch_url(args),
+        "download_file" => execute_download_file(args, store, state),
         other => {
             // 内置工具名已知但没匹配上（不应该发生）
             if memos_core::tool::BUILTIN_TOOL_NAMES.contains(&other) {
@@ -1301,8 +1324,7 @@ fn execute_fetch_url(args: &Value) -> memos_core::CoreResult<Value> {
         .ok_or_else(|| memos_core::CoreError::Other("缺少 url 参数".into()))?
         .to_string();
 
-    let lower = url.to_ascii_lowercase();
-    if !lower.starts_with("http://") && !lower.starts_with("https://") {
+    if !is_http_url(&url) {
         return Ok(json!({
             "error": "仅支持 http:// 或 https:// 开头的 URL",
             "tool_name": "fetch_url",
@@ -1449,6 +1471,324 @@ fn fallback_html_to_markdown(html: &str) -> String {
             String::new()
         }
     }
+}
+
+/// download_file 默认大小上限（32MB）
+const DEFAULT_DOWNLOAD_MAX_BYTES: u64 = 32 * 1024 * 1024;
+/// download_file 允许声明的最大上限（200MB）
+const MAX_DOWNLOAD_MAX_BYTES: u64 = 200 * 1024 * 1024;
+
+/// 是否为受支持的 http(s) URL
+fn is_http_url(url: &str) -> bool {
+    let lower = url.to_ascii_lowercase();
+    lower.starts_with("http://") || lower.starts_with("https://")
+}
+
+/// download_file 工具：下载网络文件并保存到当前工作空间的附件目录
+///
+/// 下载的文件一律以 LOCAL 方式落盘（不遵循 StorageConfig 的 DATABASE 模式），
+/// 并在 attachment 表写入元数据，使前端可通过 `attachment://{uid}` 访问。
+fn execute_download_file(
+    args: &Value,
+    store: &Store,
+    state: &AppState,
+) -> memos_core::CoreResult<Value> {
+    let url = args
+        .get("url")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| memos_core::CoreError::Other("缺少 url 参数".into()))?
+        .to_string();
+
+    if !is_http_url(&url) {
+        return Ok(json!({
+            "error": "仅支持 http:// 或 https:// 开头的 URL",
+            "tool_name": "download_file",
+        }));
+    }
+
+    let filename_arg = args
+        .get("filename")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+
+    let max_bytes = args
+        .get("max_bytes")
+        .and_then(|v| v.as_i64())
+        .filter(|n| *n > 0)
+        .map(|n| n as u64)
+        .unwrap_or(DEFAULT_DOWNLOAD_MAX_BYTES)
+        .min(MAX_DOWNLOAD_MAX_BYTES);
+
+    let template = {
+        let config_store = state.config_store();
+        load_storage_config(&config_store).filepath_template
+    };
+
+    download_file_to_attachments(
+        &url,
+        filename_arg.as_deref(),
+        max_bytes,
+        &state.attachments_dir,
+        &template,
+        store,
+    )
+}
+
+/// 下载并写入附件目录（不依赖 AppState，便于集成测试）
+fn download_file_to_attachments(
+    url: &str,
+    filename_arg: Option<&str>,
+    max_bytes: u64,
+    attachments_dir: &std::path::Path,
+    template: &str,
+    store: &Store,
+) -> memos_core::CoreResult<Value> {
+    // 1. 发起请求（ureq 为阻塞式客户端，本工具运行在 spawn_blocking 线程上）
+    let agent = ureq::AgentBuilder::new()
+        .timeout_connect(Duration::from_secs(15))
+        .timeout(Duration::from_secs(600))
+        .user_agent(FETCH_USER_AGENT)
+        .build();
+
+    let resp = match agent.get(url).call() {
+        Ok(r) => r,
+        Err(ureq::Error::Status(code, _)) => {
+            return Ok(json!({
+                "error": format!("HTTP {code}"),
+                "status": code,
+                "url": url,
+                "tool_name": "download_file",
+            }));
+        }
+        Err(e) => {
+            return Ok(json!({
+                "error": format!("请求失败: {e}"),
+                "url": url,
+                "tool_name": "download_file",
+            }));
+        }
+    };
+
+    let status = resp.status();
+    let content_type = resp
+        .header("Content-Type")
+        .unwrap_or("")
+        .split(';')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
+    let content_length = resp
+        .header("Content-Length")
+        .and_then(|s| s.parse::<u64>().ok());
+    let content_disposition = resp.header("Content-Disposition").unwrap_or("").to_string();
+
+    // 提前按 Content-Length 拒绝超大文件，避免无谓传输
+    if let Some(len) = content_length.filter(|len| *len > max_bytes) {
+        return Ok(json!({
+            "error": format!("文件过大: {len} 字节，超过上限 {max_bytes} 字节"),
+            "status": status,
+            "url": url,
+            "content_length": len,
+            "max_bytes": max_bytes,
+            "tool_name": "download_file",
+        }));
+    }
+
+    // 2. 流式读取，超过上限立即截断（多读 1 字节用于判断是否超限）
+    let mut blob: Vec<u8> = Vec::with_capacity(
+        content_length
+            .unwrap_or(0)
+            .min(max_bytes)
+            .min(8 * 1024 * 1024) as usize,
+    );
+    if let Err(e) = resp.into_reader().take(max_bytes + 1).read_to_end(&mut blob) {
+        return Ok(json!({
+            "error": format!("下载中断: {e}"),
+            "status": status,
+            "url": url,
+            "tool_name": "download_file",
+        }));
+    }
+    if blob.len() as u64 > max_bytes {
+        return Ok(json!({
+            "error": format!("文件超过大小上限 {max_bytes} 字节，已中止下载"),
+            "status": status,
+            "url": url,
+            "max_bytes": max_bytes,
+            "tool_name": "download_file",
+        }));
+    }
+    if blob.is_empty() {
+        return Ok(json!({
+            "error": "下载内容为空",
+            "status": status,
+            "url": url,
+            "tool_name": "download_file",
+        }));
+    }
+
+    // 3. 推断文件名与 MIME
+    let filename = resolve_download_filename(filename_arg, url, &content_disposition, &content_type);
+    let mime = if content_type.is_empty() {
+        mime_guess::from_path(&filename)
+            .first_or_octet_stream()
+            .to_string()
+    } else {
+        content_type
+    };
+
+    // 4. 落盘到附件目录（复用与 create_attachment 相同的文件名模板）
+    let uid = uuid::Uuid::new_v4().simple().to_string();
+    let reference = file_storage::write_file(attachments_dir, &uid, &filename, &blob, template)
+        .map_err(|e| memos_core::CoreError::Other(format!("写入附件文件失败: {e}")))?;
+
+    // 5. 写入附件元数据；失败则回滚已落盘的文件，避免留下孤儿文件
+    let size = blob.len() as i64;
+    let created = store.with_conn(|c| {
+        memos_core::attachment::create(c, &CreateAttachment {
+            uid: uid.clone(),
+            filename: filename.clone(),
+            blob: Vec::new(),
+            r#type: mime.clone(),
+            memo_id: None,
+            storage_type: STORAGE_TYPE_LOCAL.to_string(),
+            reference: reference.clone(),
+            size: Some(size),
+        })
+    });
+
+    match created {
+        Ok(att) => Ok(json!({
+            "attachment_id": att.id,
+            "attachment_uid": att.uid,
+            "filename": att.filename,
+            "type": att.r#type,
+            "size": att.size,
+            "reference": att.reference,
+            "url": url,
+            "status": status,
+            "content_length": content_length,
+            "tool_name": "download_file",
+        })),
+        Err(e) => {
+            if let Err(de) = file_storage::delete_file(attachments_dir, &reference) {
+                tracing::warn!("download_file: 回滚附件文件失败: {de}");
+            }
+            Err(e)
+        }
+    }
+}
+
+/// 推断下载文件名：显式参数 > Content-Disposition > URL 路径末段 > 按 MIME 兜底
+fn resolve_download_filename(
+    filename_arg: Option<&str>,
+    url: &str,
+    content_disposition: &str,
+    content_type: &str,
+) -> String {
+    let candidate = filename_arg
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .or_else(|| filename_from_content_disposition(content_disposition))
+        .or_else(|| filename_from_url(url));
+
+    let ext_from_mime = ext_from_mime(content_type);
+
+    match candidate {
+        Some(name) => {
+            if std::path::Path::new(&name).extension().is_some() {
+                name
+            } else if let Some(ext) = ext_from_mime {
+                format!("{name}.{ext}")
+            } else {
+                name
+            }
+        }
+        None => match ext_from_mime {
+            Some(ext) => format!("download.{ext}"),
+            None => "download".to_string(),
+        },
+    }
+}
+
+/// 由 MIME 推断首选扩展名（mime_guess 对 text/html 返回 "htm"，这里统一为 "html"）
+fn ext_from_mime(content_type: &str) -> Option<&'static str> {
+    let ext = mime_guess::get_mime_extensions_str(content_type)?
+        .first()
+        .copied()?;
+    Some(match ext {
+        "htm" => "html",
+        other => other,
+    })
+}
+
+/// 从 Content-Disposition 提取文件名（优先 RFC 5987 的 `filename*`）
+fn filename_from_content_disposition(value: &str) -> Option<String> {
+    let mut plain: Option<String> = None;
+    let mut extended: Option<String> = None;
+
+    for part in value.split(';').skip(1) {
+        let Some((key, raw)) = part.split_once('=') else {
+            continue;
+        };
+        let raw = raw.trim().trim_matches('"');
+        if raw.is_empty() {
+            continue;
+        }
+        match key.trim().to_ascii_lowercase().as_str() {
+            // 形如 UTF-8''%E6%8A%A5%E5%91%8A.pdf
+            "filename*" => {
+                let encoded = raw.rsplit("''").next().unwrap_or(raw);
+                let decoded = percent_decode(encoded);
+                if !decoded.trim().is_empty() {
+                    extended = Some(decoded);
+                }
+            }
+            "filename" => plain = Some(raw.to_string()),
+            _ => {}
+        }
+    }
+
+    extended.or(plain)
+}
+
+/// 取 URL 路径的最后一段作为文件名（去掉 query / fragment，并解码百分号转义）
+fn filename_from_url(url: &str) -> Option<String> {
+    let without_query = url.split(['?', '#']).next().unwrap_or(url);
+    let last = without_query.rsplit('/').next().unwrap_or("");
+    let decoded = percent_decode(last);
+    let decoded = decoded.trim();
+    if decoded.is_empty() || decoded == "." || decoded == ".." {
+        return None;
+    }
+    Some(decoded.to_string())
+}
+
+/// 极简 percent-decoding（仅处理 `%XX`），非法序列原样保留
+fn percent_decode(input: &str) -> String {
+    let bytes = input.as_bytes();
+    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            let hi = (bytes[i + 1] as char).to_digit(16);
+            let lo = (bytes[i + 2] as char).to_digit(16);
+            if let (Some(hi), Some(lo)) = (hi, lo) {
+                out.push((hi * 16 + lo) as u8);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 /// 生成 16 字符 hex ID
@@ -1644,7 +1984,7 @@ mod tests {
     #[test]
     fn test_tool_definitions_count() {
         let defs = tool_definitions(&[]);
-        assert_eq!(defs.len(), 19);
+        assert_eq!(defs.len(), 20);
         let names: Vec<&str> = defs
             .iter()
             .map(|d| d["function"]["name"].as_str().unwrap())
@@ -1668,6 +2008,7 @@ mod tests {
         assert!(names.contains(&"set_kg_node_tags"));
         assert!(names.contains(&"link_kg_nodes"));
         assert!(names.contains(&"fetch_url"));
+        assert!(names.contains(&"download_file"));
     }
 
     #[test]
@@ -1691,7 +2032,7 @@ mod tests {
             ..enabled.clone()
         };
         let defs = tool_definitions(&[enabled, disabled]);
-        assert_eq!(defs.len(), 20); // 19 built-in + 1 enabled user tool
+        assert_eq!(defs.len(), 21); // 20 built-in + 1 enabled user tool
         let names: Vec<&str> = defs
             .iter()
             .map(|d| d["function"]["name"].as_str().unwrap())
@@ -2095,5 +2436,145 @@ mod tests {
         assert_eq!(result["status"].as_i64().unwrap(), 200);
         assert_eq!(result["title"].as_str().unwrap(), "Example Domain");
         assert!(!result["markdown"].as_str().unwrap().trim().is_empty());
+    }
+
+    #[test]
+    fn test_is_http_url() {
+        assert!(is_http_url("http://a.com"));
+        assert!(is_http_url("HTTPS://a.com"));
+        assert!(!is_http_url("file:///etc/passwd"));
+        assert!(!is_http_url("ftp://a.com"));
+        assert!(!is_http_url("data:text/html,x"));
+        assert!(!is_http_url(""));
+    }
+
+    #[test]
+    fn test_percent_decode() {
+        assert_eq!(percent_decode("report.pdf"), "report.pdf");
+        assert_eq!(percent_decode("%E6%8A%A5%E5%91%8A.pdf"), "报告.pdf");
+        assert_eq!(percent_decode("a%2Bb"), "a+b");
+        // 非法转义原样保留
+        assert_eq!(percent_decode("100%"), "100%");
+        assert_eq!(percent_decode("%zz"), "%zz");
+    }
+
+    #[test]
+    fn test_filename_from_content_disposition() {
+        assert_eq!(
+            filename_from_content_disposition(r#"attachment; filename="report.pdf""#),
+            Some("report.pdf".to_string())
+        );
+        // filename* 优先，且解码 RFC 5987 编码
+        assert_eq!(
+            filename_from_content_disposition(
+                "attachment; filename=\"fallback.pdf\"; filename*=UTF-8''%E6%8A%A5%E5%91%8A.pdf"
+            ),
+            Some("报告.pdf".to_string())
+        );
+        assert_eq!(filename_from_content_disposition("inline"), None);
+    }
+
+    #[test]
+    fn test_filename_from_url() {
+        assert_eq!(
+            filename_from_url("https://a.com/docs/report.pdf"),
+            Some("report.pdf".to_string())
+        );
+        // query / fragment 应被剥离
+        assert_eq!(
+            filename_from_url("https://a.com/dl?id=5#frag"),
+            Some("dl".to_string())
+        );
+        assert_eq!(
+            filename_from_url("https://a.com/%E6%8A%A5%E5%91%8A.zip"),
+            Some("报告.zip".to_string())
+        );
+        // 路径为空（以 / 结尾）
+        assert_eq!(filename_from_url("https://a.com/"), None);
+        // 无路径时退化为 host
+        assert_eq!(
+            filename_from_url("https://a.com"),
+            Some("a.com".to_string())
+        );
+    }
+
+    #[test]
+    fn test_resolve_download_filename() {
+        // 1. 显式参数优先
+        assert_eq!(
+            resolve_download_filename(Some("my.zip"), "https://a.com/x", "", "application/zip"),
+            "my.zip"
+        );
+        // 2. Content-Disposition
+        assert_eq!(
+            resolve_download_filename(None, "https://a.com/x", r#"attachment; filename="a.pdf""#, ""),
+            "a.pdf"
+        );
+        // 3. URL 末段
+        assert_eq!(
+            resolve_download_filename(None, "https://a.com/pic.png", "", ""),
+            "pic.png"
+        );
+        // 4. 无扩展名时按 MIME 补全
+        assert_eq!(
+            resolve_download_filename(None, "https://a.com/image", "", "image/png"),
+            "image.png"
+        );
+        // 5. 完全推断不出时的兜底
+        assert_eq!(resolve_download_filename(None, "https://a.com/", "", ""), "download");
+        assert_eq!(
+            resolve_download_filename(None, "https://a.com/", "", "application/pdf"),
+            "download.pdf"
+        );
+        // 6. text/html 统一为 .html 而非 mime_guess 默认的 .htm
+        assert_eq!(
+            resolve_download_filename(None, "https://a.com/", "", "text/html"),
+            "download.html"
+        );
+    }
+
+    /// 真实下载验证（默认忽略）：cargo test -p frag-note-app -- --ignored download_file_live
+    #[test]
+    #[ignore]
+    fn download_file_live() {
+        use memos_core::attachment::FindAttachment;
+
+        let dir = std::env::temp_dir().join(format!("memos_dl_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let store = Store::open(":memory:").unwrap();
+
+        let result = download_file_to_attachments(
+            "https://example.com/",
+            None,
+            1_000_000,
+            &dir,
+            "{uid}_{filename}",
+            &store,
+        )
+        .unwrap();
+        println!("{}", serde_json::to_string_pretty(&result).unwrap());
+
+        assert_eq!(result["status"].as_i64().unwrap(), 200);
+        assert_eq!(result["type"].as_str().unwrap(), "text/html");
+
+        // 文件确实落在附件目录
+        let reference = result["reference"].as_str().unwrap();
+        let path = dir.join(reference);
+        assert!(path.exists(), "附件文件未落盘: {}", path.display());
+        assert_eq!(
+            std::fs::metadata(&path).unwrap().len() as i64,
+            result["size"].as_i64().unwrap()
+        );
+
+        // 元数据已写入 attachment 表
+        let uid = result["attachment_uid"].as_str().unwrap().to_string();
+        let found = store
+            .with_conn(|c| {
+                memos_core::attachment::get(c, &FindAttachment { uid: Some(uid), ..Default::default() })
+            })
+            .unwrap();
+        assert!(found.is_some(), "attachment 表缺少记录");
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

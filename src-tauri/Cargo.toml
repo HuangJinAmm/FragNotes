@@ -34,6 +34,8 @@ markitdown = "0.1.11"
 dom_smoothie = "0.18"
 # HTML → Markdown（turndown.js 的 Rust 实现）
 htmd = "0.5"
+# 由扩展名推断 MIME（download_file 在响应缺少 Content-Type 时使用）
+mime_guess = "2"
 uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
