@@ -120,7 +120,7 @@ fn stop_mcp_with_timeout(app_handle: &tauri::AppHandle) {
     }
 }
 
-/// 退出时停止本地 LLM 服务（前台模式 kill 子进程；守护模式调用 lms server stop）
+/// 退出时停止本地 LLM 服务（终止用户命令行启动的子进程）
 fn stop_llm_runner(app_handle: &tauri::AppHandle) {
     let state = app_handle.state::<AppState>();
     let runner = state
@@ -329,7 +329,7 @@ fn main() {
                 let _ = app.handle().emit("show_workspace_picker", ());
             } else {
                 // 有有效 active workspace，根据配置启动 LAN/LLM/MCP
-                // LAN/LLM/MCP 配置现在从 config_store 读取（Phase 4 会更新这些函数签名）
+                // 配置统一从 config_store 读取
                 let lan_enabled = {
                     let state = app.state::<AppState>();
                     let config_store = state.config_store();
@@ -350,7 +350,9 @@ fn main() {
                 let llm_auto_start = {
                     let state = app.state::<AppState>();
                     let config_store = state.config_store();
-                    llm_runner::load_config(&config_store).auto_start
+                    let cfg = llm_runner::load_config(&config_store);
+                    // 未填写启动命令行时不自启（应用不内置模型运行时）
+                    cfg.auto_start && !cfg.command.trim().is_empty()
                 };
                 if llm_auto_start {
                     let app_handle = app.handle().clone();

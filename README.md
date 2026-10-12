@@ -37,7 +37,7 @@
 - **AI Skills 机制**：内置 + 用户自定义 Skill（Markdown 指南文档），元数据始终注入系统提示，LLM 通过 `load_skill` 工具按需加载全文；内置 office-cli 系列 Skill（docx/pptx/xlsx/财务模型/学术论文等）。
 - **用户可配置工具**：用户可在设置中创建 shell 命令工具，由 AI agent 在权限等级确认机制（again/hard/good/easy）下调用执行。
 - **AI 跨会话长期记忆**：助手可跨会话记住用户偏好与稳定事实（`fact` / `preference` / `episode` 三类）。默认关闭；开启后按「关键词命中 + 语义相似度 + 重要度 + 时效 + 命中衰减」召回并注入 system prompt（受条数与字符预算双重约束），可在对话结束后自动抽取（带冲突消解：`add` / `update`），也可由助手通过 `remember` / `forget` 工具主动读写；上下文被压缩时，离场摘要会沉淀为情节记忆，避免「压缩即遗忘」。记忆存于当前工作空间，设置页可逐条启用 / 编辑 / 删除，显示来源会话并可一键跳回该对话，支持导出 / 导入 JSON 备份（幂等合并，且不并入工作空间备份）。详见 [设计文档](docs/superpowers/specs/2026-10-12-ai-memory-design.md)。
-- **本地 LLM 启动器**：通过 `llama.cpp` 的 `llama-server` 或 LM Studio 的 `lms` CLI 拉起 OpenAI 兼容的本地端点，支持前台 / 守护两种模式与开机自启。
+- **本地 LLM 启动器**：用户自行填写启动命令行（应用不内置任何模型运行时）拉起 OpenAI 兼容的本地端点，支持开机自启。
 - **LAN 发现与分享**：基于 `iroh`（QUIC）+ mDNS，自动发现局域网内其他实例，可预览 / 复制远端笔记与附件，按需无状态查询，不做主动同步。
 - **MCP 服务器**：内置 Streamable HTTP MCP 服务端，向同机 Claude Desktop / Cline / Continue 等客户端暴露 memo CRUD 工具、`memo://{uid}` 资源与预设提示模板（`summarize_recent` / `gather_by_tag` / `review_due`）。
 - **多工作空间**：数据目录由 `app_config_dir()` 引导，用户可创建 / 切换 / 重命名 / 删除多个工作空间，每个工作空间独立的 `memos.db` + 附件目录。
@@ -407,9 +407,10 @@ npm run dev
 ### 9. 本地 LLM 启动器
 
 - 模块：`src-tauri/src/llm_runner/`，包含 `config.rs`（持久化）与 `runner.rs`（进程管理）。
-- 支持两种后端：
-  - **llama.cpp** 的 `llama-server`（前台模式，退出时 kill 子进程）。
-  - **LM Studio** 的 `lms` CLI（守护模式，退出时调用 `lms server stop`）。
+- 应用**不内置任何模型运行时**（不带 `llama-server` / `lms` 等命令），只保存用户填写的完整启动命令行：
+  - `command`：如 `llama-server -m "D:\models\qwen2.5-7b.gguf" --port 8080 -ngl 99`（第一个 token 为可执行文件，含空格的路径用双引号包裹）。
+  - `base_url`：应用连接的 OpenAI 兼容端点，留空回退 `http://127.0.0.1:8080/v1`。
+- 命令行解析后直接 spawn（不经过 shell，无命令注入面），跟踪 PID，退出/停止时终止该子进程（Windows 下 `taskkill /T /F` 结束子进程树以释放显存）。
 - 配置存储在 `app_setting` 表的 `llm_runner_config` key，支持 `auto_start` 开机自启。
 - 退出时由 `main.rs::stop_llm_runner` 在 2 秒清理窗口内停止服务。
 

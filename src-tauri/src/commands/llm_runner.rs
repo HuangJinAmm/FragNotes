@@ -5,7 +5,7 @@
 use crate::error::{IpcError, IpcResult};
 use crate::llm_runner::{
     self, effective_base_url, load_config, save_config, LlmRunnerConfig, LlmRunnerState,
-    LlmRunnerStatus, RUNNER_TYPE_LMS,
+    LlmRunnerStatus,
 };
 use crate::state::AppState;
 use std::sync::Arc;
@@ -21,29 +21,29 @@ pub fn llm_get_config(state: tauri::State<'_, AppState>) -> IpcResult<LlmRunnerC
 }
 
 /// 保存本地 LLM 启动器配置
+///
+/// 应用不内置模型运行时，`command` 为用户自行填写的完整启动命令行。
 #[tauri::command]
 pub fn llm_update_config(
     app_handle: AppHandle,
     state: tauri::State<'_, AppState>,
     req: LlmRunnerConfig,
 ) -> IpcResult<LlmRunnerConfig> {
-    // 校验必填字段
-    if req.executable_path.trim().is_empty() {
-        return Err(IpcError::BadRequest("可执行文件路径不能为空".into()));
+    if req.command.trim().is_empty() {
+        return Err(IpcError::BadRequest("启动命令行不能为空".into()));
     }
-    // lms 模式下 host 由 LM Studio 守护进程决定（lms server start 不支持 --host），
-    // 不强制要求；llama-cpp 等前台模式必须指定 host
-    if req.runner_type != RUNNER_TYPE_LMS && req.host.trim().is_empty() {
-        return Err(IpcError::BadRequest("监听 host 不能为空".into()));
+    // 命令行按空白切分，第一段必须是可执行文件
+    let tokens = llm_runner::runner::split_command_line(&req.command);
+    if tokens.is_empty() {
+        return Err(IpcError::BadRequest("启动命令行无法解析出可执行文件".into()));
     }
-    if req.port == 0 {
-        return Err(IpcError::BadRequest("监听端口不能为 0".into()));
-    }
-
-    // 拒绝 executable_path 中的 shell 元字符（避免命令注入）
-    if req.executable_path.contains(|c: char| c == '|' || c == ';' || c == '&') {
+    // Base URL 可留空（回退默认值）；填写时必须是 http/https 端点
+    let base_url = req.base_url.trim();
+    if !base_url.is_empty()
+        && !(base_url.starts_with("http://") || base_url.starts_with("https://"))
+    {
         return Err(IpcError::BadRequest(
-            "可执行文件路径包含非法字符（| ; &）".into(),
+            "Base URL 必须以 http:// 或 https:// 开头".into(),
         ));
     }
 
@@ -67,7 +67,7 @@ pub fn llm_update_config(
 #[tauri::command]
 pub async fn llm_start(app_handle: AppHandle) -> IpcResult<LlmRunnerStatus> {
     let runner = ensure_runner_state(&app_handle)?;
-    // spawn 逻辑可能阻塞（守护模式下要等待 lms 返回），放到 spawn_blocking
+    // spawn 逻辑可能阻塞（进程启动 / 命令行解析），放到 spawn_blocking
     let runner_clone = Arc::clone(&runner);
     let app_clone = app_handle.clone();
     tauri::async_runtime::spawn_blocking(move || {
@@ -235,12 +235,13 @@ fn ensure_runner_state(app_handle: &AppHandle) -> IpcResult<Arc<LlmRunnerState>>
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::llm_runner::config::DEFAULT_BASE_URL;
 
     #[test]
-    fn test_stopped_status_uses_config() {
+    fn test_stopped_status_uses_config_base_url() {
         let mut cfg = LlmRunnerConfig::default();
-        cfg.host = "1.2.3.4".to_string();
-        cfg.port = 7777;
+        cfg.command = "llama-server --port 7777".to_string();
+        cfg.base_url = "http://1.2.3.4:7777/v1".to_string();
         let s = stopped_status(cfg);
         assert!(!s.running);
         assert!(s.pid.is_none());
@@ -252,24 +253,12 @@ mod tests {
     fn test_stopped_status_default_config() {
         let cfg = LlmRunnerConfig::default();
         let s = stopped_status(cfg);
-        assert_eq!(s.base_url, "http://127.0.0.1:8080/v1");
-    }
-
-    #[test]
-    fn test_stopped_status_lms_ignores_host() {
-        let mut cfg = LlmRunnerConfig::default();
-        cfg.runner_type = RUNNER_TYPE_LMS.to_string();
-        cfg.host = "0.0.0.0".to_string(); // lms 模式下 host 不影响 base url
-        cfg.port = 1234;
-        let s = stopped_status(cfg);
-        assert_eq!(s.base_url, "http://127.0.0.1:1234/v1");
+        assert_eq!(s.base_url, DEFAULT_BASE_URL);
     }
 
     #[test]
     fn test_stopped_status_uses_base_url_override() {
         let mut cfg = LlmRunnerConfig::default();
-        cfg.runner_type = RUNNER_TYPE_LMS.to_string();
-        cfg.port = 1234;
         cfg.base_url = "http://10.0.0.5:8080/v1/".to_string();
         let s = stopped_status(cfg);
         // override 优先，尾部斜杠被去除

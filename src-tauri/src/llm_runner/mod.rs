@@ -1,5 +1,6 @@
-//! 本地 LLM 启动器：通过 llama.cpp 的 `llama-server` 或 LM Studio 的 `lms` CLI
-//! 启动 OpenAI 兼容的本地服务端点（`/v1/chat/completions`）。
+//! 本地 LLM 启动器：由用户自行填写启动命令行（不限定具体运行时，如
+//! `llama-server`、`vllm serve`、`ollama serve` 等），应用只负责拉起进程与连接
+//! OpenAI 兼容端点（`/v1/chat/completions`）。
 //!
 //! 模块组成：
 //! - [`config`]：配置持久化（app_setting 表的 `llm_runner_config` key）
@@ -8,8 +9,5 @@
 pub mod config;
 pub mod runner;
 
-pub use config::{
-    default_base_url, effective_base_url, load_config, save_config, LlmRunnerConfig,
-    RUNNER_TYPE_LMS,
-};
+pub use config::{effective_base_url, load_config, save_config, LlmRunnerConfig};
 pub use runner::{LlmRunnerError, LlmRunnerState, LlmRunnerStatus};

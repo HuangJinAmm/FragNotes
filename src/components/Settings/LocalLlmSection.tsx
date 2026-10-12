@@ -14,13 +14,6 @@ import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { getErrorMessage } from "@/lib/error";
@@ -32,14 +25,9 @@ import { SettingList, SettingListItem } from "./SettingList";
 import SettingSection from "./SettingSection";
 
 interface LlmRunnerConfig {
-  runner_type: string;
-  executable_path: string;
-  model_path: string;
-  host: string;
-  port: number;
-  context_size: number;
-  gpu_layers: number;
-  extra_args: string;
+  /** 用户自行填写的完整启动命令行（可执行文件 + 参数） */
+  command: string;
+  /** OpenAI 兼容端点 Base URL，留空回退默认值 */
   base_url: string;
   auto_start: boolean;
 }
@@ -61,42 +49,23 @@ interface TestConnectionResult {
   error: string | null;
 }
 
+/** 未配置 base_url 时使用的默认端点（与后端 DEFAULT_BASE_URL 保持一致） */
+const DEFAULT_BASE_URL = "http://127.0.0.1:8080/v1";
+
 const DEFAULT_CONFIG: LlmRunnerConfig = {
-  runner_type: "llama-cpp",
-  executable_path: "llama-server",
-  model_path: "",
-  host: "127.0.0.1",
-  port: 8080,
-  context_size: 4096,
-  gpu_layers: 0,
-  extra_args: "",
+  command: "",
   base_url: "",
   auto_start: false,
 };
 
-/** 按 runner 类型派生默认 Base URL（与后端 default_base_url 保持一致） */
-const deriveDefaultBaseUrl = (config: LlmRunnerConfig): string => {
-  const port = config.port || 8080;
-  if (config.runner_type === "lms") {
-    return `http://127.0.0.1:${port}/v1`;
-  }
-  const host = config.host.trim() || "127.0.0.1";
-  return `http://${host}:${port}/v1`;
-};
-
-/** 返回有效的 Base URL：优先使用用户配置的 base_url，为空时回退到派生默认值 */
+/** 返回有效的 Base URL：优先使用用户配置的 base_url，为空时回退到默认值 */
 const effectiveBaseUrl = (config: LlmRunnerConfig): string => {
   const trimmed = config.base_url.trim();
   if (trimmed) {
     return trimmed.replace(/\/+$/, "");
   }
-  return deriveDefaultBaseUrl(config);
+  return DEFAULT_BASE_URL;
 };
-
-const RUNNER_TYPES = [
-  { value: "llama-cpp", labelKey: "setting.local-llm.runner-llama-cpp" },
-  { value: "lms", labelKey: "setting.local-llm.runner-lms" },
-] as const;
 
 const LocalLlmSection = () => {
   const t = useTranslate();
@@ -142,8 +111,7 @@ const LocalLlmSection = () => {
         }
       });
     })();
-    // 兜底轮询：守护模式 lms 状态变化由 stop/start 触发，前台模式由日志线程触发，
-    // 但极端情况下事件可能丢失，每 5 秒兜底一次状态查询
+    // 兜底轮询：极端情况下事件可能丢失，每 5 秒兜底一次状态查询
     pollTimer = setInterval(() => {
       invoke<LlmRunnerStatus>("llm_get_status")
         .then(setStatus)
@@ -167,8 +135,8 @@ const LocalLlmSection = () => {
   };
 
   const isDirty = JSON.stringify(config) !== JSON.stringify(original);
-  const isLms = config.runner_type === "lms";
   const running = Boolean(status?.running);
+  const canStart = config.command.trim().length > 0;
 
   const handleSave = async () => {
     setSaving(true);
@@ -188,6 +156,12 @@ const LocalLlmSection = () => {
     setStarting(true);
     setTestResult(null);
     try {
+      // 启动使用后端保存的配置：若表单有改动先落库，避免「改了没保存就启动」的困惑
+      if (isDirty) {
+        const saved = await invoke<LlmRunnerConfig>("llm_update_config", { req: config });
+        setConfig(saved);
+        setOriginal(saved);
+      }
       const st = await invoke<LlmRunnerStatus>("llm_start");
       setStatus(st);
       if (st.running) {
@@ -254,7 +228,7 @@ const LocalLlmSection = () => {
       }
       const provider: ProviderConfig = {
         id: crypto.randomUUID(),
-        name: isLms ? "Local LLM (lms)" : "Local LLM (llama.cpp)",
+        name: "Local LLM",
         base_url: baseUrl,
         api_key: "",
         model: "",
@@ -290,7 +264,7 @@ const LocalLlmSection = () => {
               {stopping ? t("setting.local-llm.stopping") : t("setting.local-llm.stop")}
             </Button>
           ) : (
-            <Button size="sm" onClick={handleStart} disabled={starting}>
+            <Button size="sm" onClick={handleStart} disabled={starting || !canStart}>
               <PlayIcon className="size-4" />
               {starting ? t("setting.local-llm.starting") : t("setting.local-llm.start")}
             </Button>
@@ -418,183 +392,39 @@ const LocalLlmSection = () => {
         </div>
       </div>
 
-      {/* 启动器类型 */}
+      {/* 启动命令行 */}
       <SettingGroup
-        title={t("setting.local-llm.runner-type")}
-        description={t("setting.local-llm.runner-type-description")}
+        title={t("setting.local-llm.command-title")}
+        description={t("setting.local-llm.command-hint")}
       >
-        <SettingList>
-          <SettingListItem
-            label={t("setting.local-llm.runner-type")}
-            description={t("setting.local-llm.runner-type-description")}
-          >
-            <Select
-              value={config.runner_type}
-              onValueChange={(v) => update({ runner_type: v })}
-            >
-              <SelectTrigger className="w-56">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {RUNNER_TYPES.map((rt) => (
-                  <SelectItem key={rt.value} value={rt.value}>
-                    {t(rt.labelKey)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </SettingListItem>
-        </SettingList>
+        <Textarea
+          className="font-mono text-xs"
+          rows={3}
+          value={config.command}
+          onChange={(e) => update({ command: e.target.value })}
+          placeholder={t("setting.local-llm.command-placeholder")}
+        />
       </SettingGroup>
 
-      {/* 可执行文件 + 模型 */}
+      {/* 连接 */}
       <SettingGroup
-        title={t("setting.local-llm.paths-title")}
-        description={t("setting.local-llm.paths-description")}
+        title={t("setting.local-llm.connect-title")}
+        description={t("setting.local-llm.connect-description")}
         showSeparator
       >
         <SettingList>
           <SettingListItem
-            label={t("setting.local-llm.executable-path")}
-            description={t("setting.local-llm.executable-path-hint")}
-          >
-            <Input
-              className="w-72 font-mono"
-              value={config.executable_path}
-              onChange={(e) => update({ executable_path: e.target.value })}
-              placeholder={isLms ? "lms" : "llama-server"}
-            />
-          </SettingListItem>
-          <SettingListItem
-            label={t("setting.local-llm.model-path")}
-            description={
-              isLms
-                ? t("setting.local-llm.model-path-hint-lms")
-                : t("setting.local-llm.model-path-hint-llama")
-            }
-          >
-            <Input
-              className="w-72 font-mono"
-              value={config.model_path}
-              onChange={(e) => update({ model_path: e.target.value })}
-              placeholder={isLms ? "qwen2.5-7b-instruct" : "/models/qwen2.5-7b.gguf"}
-            />
-          </SettingListItem>
-        </SettingList>
-      </SettingGroup>
-
-      {/* 网络 */}
-      <SettingGroup
-        title={t("setting.local-llm.network-title")}
-        description={t("setting.local-llm.network-description")}
-        showSeparator
-      >
-        <SettingList>
-          <SettingListItem
-            label={t("setting.local-llm.host")}
-            description={
-              isLms
-                ? t("setting.local-llm.host-hint-lms")
-                : t("setting.local-llm.host-hint")
-            }
-          >
-            <Input
-              className="w-40 font-mono"
-              value={config.host}
-              onChange={(e) => update({ host: e.target.value })}
-              placeholder="127.0.0.1"
-              disabled={isLms}
-            />
-          </SettingListItem>
-          <SettingListItem label={t("setting.local-llm.port")} description={t("setting.local-llm.port-hint")}>
-            <Input
-              className="w-28 font-mono"
-              type="number"
-              min={1}
-              max={65535}
-              value={config.port}
-              onChange={(e) => update({ port: Number(e.target.value) })}
-              onBlur={(e) => {
-                const value = Math.max(1, Math.min(65535, Number(e.target.value) || 8080));
-                update({ port: value });
-              }}
-            />
-          </SettingListItem>
-          <SettingListItem
-            label={t("setting.local-llm.base-url-override")}
-            description={t("setting.local-llm.base-url-override-hint")}
+            label={t("setting.local-llm.base-url")}
+            description={t("setting.local-llm.base-url-hint")}
           >
             <Input
               className="w-72 font-mono"
               value={config.base_url}
               onChange={(e) => update({ base_url: e.target.value })}
-              placeholder={deriveDefaultBaseUrl(config)}
+              placeholder={DEFAULT_BASE_URL}
             />
           </SettingListItem>
         </SettingList>
-      </SettingGroup>
-
-      {/* 性能参数（仅 llama-cpp 有意义） */}
-      <SettingGroup
-        title={t("setting.local-llm.performance-title")}
-        description={
-          isLms
-            ? t("setting.local-llm.performance-description-lms")
-            : t("setting.local-llm.performance-description")
-        }
-        showSeparator
-      >
-        <SettingList>
-          <SettingListItem
-            label={t("setting.local-llm.context-size")}
-            description={t("setting.local-llm.context-size-hint")}
-          >
-            <Input
-              className="w-28 font-mono"
-              type="number"
-              min={512}
-              value={config.context_size}
-              onChange={(e) => update({ context_size: Number(e.target.value) })}
-              onBlur={(e) => {
-                const value = Math.max(512, Number(e.target.value) || 4096);
-                update({ context_size: value });
-              }}
-              disabled={isLms}
-            />
-          </SettingListItem>
-          <SettingListItem
-            label={t("setting.local-llm.gpu-layers")}
-            description={t("setting.local-llm.gpu-layers-hint")}
-          >
-            <Input
-              className="w-28 font-mono"
-              type="number"
-              min={0}
-              value={config.gpu_layers}
-              onChange={(e) => update({ gpu_layers: Number(e.target.value) })}
-              onBlur={(e) => {
-                const value = Math.max(0, Number(e.target.value) || 0);
-                update({ gpu_layers: value });
-              }}
-              disabled={isLms}
-            />
-          </SettingListItem>
-        </SettingList>
-      </SettingGroup>
-
-      {/* 附加参数 */}
-      <SettingGroup
-        title={t("setting.local-llm.extra-args")}
-        description={t("setting.local-llm.extra-args-hint")}
-        showSeparator
-      >
-        <Textarea
-          className="font-mono text-xs"
-          rows={2}
-          value={config.extra_args}
-          onChange={(e) => update({ extra_args: e.target.value })}
-          placeholder="--verbose --jinja"
-        />
       </SettingGroup>
 
       {/* 自动启动 */}
