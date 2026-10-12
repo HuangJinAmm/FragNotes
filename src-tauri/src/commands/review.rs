@@ -928,7 +928,7 @@ fn run_card_agent(
             "model": provider.model,
             "messages": req_messages,
             "stream": true,
-            "tools": tool_definitions(&[]),
+            "tools": tool_definitions(&[], false),
         });
 
         let url = format!("{}/chat/completions", provider.base_url.trim_end_matches('/'));
@@ -997,7 +997,8 @@ fn run_card_agent(
             let args: Value = serde_json::from_str(&tc.arguments).unwrap_or(Value::Null);
             let result = {
                 let store = state.store();
-                execute_tool(&tc.name, &args, &store, &state.builtin_skills, &state)
+                // 复习卡生成没有聊天会话上下文，记忆溯源为空
+                execute_tool(&tc.name, &args, &store, &state.builtin_skills, &state, None)
             };
             let result = match result {
                 Ok(v) => v,

@@ -141,11 +141,18 @@ export function AiChatPanel() {
   const sendRef = useRef(send);
   sendRef.current = send;
 
+  // 保持 switchToSession 的最新引用，供模块级控制器调用（如从记忆溯源跳转会话）
+  const switchSessionRef = useRef(switchToSession);
+  switchSessionRef.current = switchToSession;
+
   // 注册到模块级控制器，允许外部组件(如 MemoActionMenu)打开面板并发送预设消息
   useEffect(() => {
     return registerAiChat(
       () => setOpen(true),
       (content) => sendRef.current(content),
+      (sessionId) => {
+        void switchSessionRef.current(sessionId);
+      },
     );
   }, []);
 

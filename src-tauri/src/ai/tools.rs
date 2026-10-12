@@ -24,7 +24,9 @@ use tauri::async_runtime;
 use tauri::Manager;
 
 /// 返回 OpenAI function-calling 格式的工具定义
-pub fn tool_definitions(user_tools: &[Tool]) -> Vec<Value> {
+///
+/// `memory_enabled` 为 true 时额外暴露 `remember` / `forget`（AI 记忆未启用时这两个工具无意义）。
+pub fn tool_definitions(user_tools: &[Tool], memory_enabled: bool) -> Vec<Value> {
     let mut defs: Vec<Value> = vec![
         json!({
             "type": "function",
@@ -360,6 +362,46 @@ pub fn tool_definitions(user_tools: &[Tool]) -> Vec<Value> {
             }
         }),
     ];
+
+    // 记忆工具仅在启用「AI 记忆」时暴露：关闭状态下不占用 prompt token，也避免写入无人使用的记忆
+    if memory_enabled {
+        defs.push(json!({
+            "type": "function",
+            "function": {
+                "name": "remember",
+                "description": "把一条关于用户的长期记忆写入「AI 记忆」，之后的对话都会参考它。\
+适用场景：用户明确要求记住某事（\"记住我偏好…\"）、或你发现了稳定的用户偏好/事实（技术栈、所在地、长期项目、回答风格）。\
+不要记录一次性的临时信息、寒暄，也不要记录笔记正文内容。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "content": { "type": "string", "description": "一句简短的陈述，如\"用户主力语言是 Rust\"" },
+                        "kind": {
+                            "type": "string",
+                            "enum": ["fact", "preference", "episode"],
+                            "description": "fact=稳定事实、preference=用户偏好、episode=值得后续引用的要点。默认 fact"
+                        },
+                        "importance": { "type": "number", "description": "重要度 1-5，越重要越高，默认 3" }
+                    },
+                    "required": ["content"]
+                }
+            }
+        }));
+        defs.push(json!({
+            "type": "function",
+            "function": {
+                "name": "forget",
+                "description": "删除一条「AI 记忆」。用户说\"忘记这件事\"或纠正你记错的信息时使用。传入 id，或精确的内容。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "id": { "type": "number", "description": "记忆 id" },
+                        "content": { "type": "string", "description": "要删除的记忆内容（与已存内容一致）" }
+                    }
+                }
+            }
+        }));
+    }
     // 追加用户工具定义
     for ut in user_tools.iter().filter(|t| t.enabled) {
         defs.push(json!({
@@ -394,6 +436,8 @@ pub fn execute_tool(
     store: &Store,
     builtin: &[Skill],
     state: &AppState,
+    // 当前聊天会话 id：记忆类工具据此标注来源会话
+    session_id: Option<i64>,
 ) -> memos_core::CoreResult<Value> {
     match name {
         "list_memos" => execute_list_memos(args, store),
@@ -419,6 +463,8 @@ pub fn execute_tool(
         "link_kg_nodes" => execute_link_kg_nodes(args, store),
         "fetch_url" => execute_fetch_url(args),
         "download_file" => execute_download_file(args, store, state),
+        "remember" => execute_remember(args, store, state, session_id),
+        "forget" => execute_forget(args, store, state),
         other => {
             // 内置工具名已知但没匹配上（不应该发生）
             if memos_core::tool::BUILTIN_TOOL_NAMES.contains(&other) {
@@ -1174,6 +1220,73 @@ fn execute_link_kg_nodes(args: &Value, store: &Store) -> memos_core::CoreResult<
 
 /// 执行内置 officecli 工具
 /// agent_loop 在同步上下文中调用，内部用 async_runtime::block_on 桥接
+/// 记忆工具的前置校验：功能未启用时拒绝写入，避免产生不会被使用的记忆
+fn ensure_memory_enabled(state: &AppState) -> memos_core::CoreResult<()> {
+    let config_store = state.config_store();
+    if !memos_core::memory::is_enabled(&config_store) {
+        return Err(memos_core::CoreError::Other(
+            "AI 记忆未启用，请在「设置 → AI 记忆」中开启".into(),
+        ));
+    }
+    Ok(())
+}
+
+/// `remember`：写入一条长期记忆（内容归一化去重，重复则更新重要度）
+fn execute_remember(
+    args: &Value,
+    store: &Store,
+    state: &AppState,
+    session_id: Option<i64>,
+) -> memos_core::CoreResult<Value> {
+    ensure_memory_enabled(state)?;
+    let content = args.get("content").and_then(|v| v.as_str()).unwrap_or("");
+    if content.trim().is_empty() {
+        return Err(memos_core::CoreError::Other("content 不能为空".into()));
+    }
+    let kind = memos_core::memory::MemoryKind::parse(
+        args.get("kind").and_then(|v| v.as_str()).unwrap_or("fact"),
+    )?;
+    let importance = args.get("importance").and_then(|v| v.as_i64()).unwrap_or(3);
+    let saved = memos_core::memory::create(
+        store,
+        kind,
+        content,
+        memos_core::memory::MemorySource::Ai,
+        importance,
+        session_id,
+    )?;
+    Ok(json!({
+        "saved": true,
+        "id": saved.id,
+        "kind": saved.kind.as_str(),
+        "content": saved.content,
+        "importance": saved.importance,
+    }))
+}
+
+/// `forget`：按 id 或内容删除记忆
+fn execute_forget(
+    args: &Value,
+    store: &Store,
+    state: &AppState,
+) -> memos_core::CoreResult<Value> {
+    ensure_memory_enabled(state)?;
+    if let Some(id) = args.get("id").and_then(|v| v.as_i64()) {
+        let existed = memos_core::memory::get(store, id)?.is_some();
+        if existed {
+            memos_core::memory::delete(store, id)?;
+        }
+        return Ok(json!({ "deleted": if existed { 1 } else { 0 } }));
+    }
+    if let Some(content) = args.get("content").and_then(|v| v.as_str()) {
+        let deleted = memos_core::memory::delete_by_content(store, content)?;
+        return Ok(json!({ "deleted": deleted }));
+    }
+    Err(memos_core::CoreError::Other(
+        "需要提供 id 或 content".into(),
+    ))
+}
+
 fn execute_officecli(args: &Value, state: &AppState) -> memos_core::CoreResult<Value> {
     let command = args
         .get("command")
@@ -1983,7 +2096,7 @@ mod tests {
 
     #[test]
     fn test_tool_definitions_count() {
-        let defs = tool_definitions(&[]);
+        let defs = tool_definitions(&[], false);
         assert_eq!(defs.len(), 20);
         let names: Vec<&str> = defs
             .iter()
@@ -2009,6 +2122,21 @@ mod tests {
         assert!(names.contains(&"link_kg_nodes"));
         assert!(names.contains(&"fetch_url"));
         assert!(names.contains(&"download_file"));
+        // 记忆关闭时不暴露 remember / forget
+        assert!(!names.contains(&"remember"));
+        assert!(!names.contains(&"forget"));
+    }
+
+    #[test]
+    fn test_tool_definitions_includes_memory_tools_when_enabled() {
+        let defs = tool_definitions(&[], true);
+        assert_eq!(defs.len(), 22); // 20 built-in + remember + forget
+        let names: Vec<&str> = defs
+            .iter()
+            .map(|d| d["function"]["name"].as_str().unwrap())
+            .collect();
+        assert!(names.contains(&"remember"));
+        assert!(names.contains(&"forget"));
     }
 
     #[test]
@@ -2031,7 +2159,7 @@ mod tests {
             enabled: false,
             ..enabled.clone()
         };
-        let defs = tool_definitions(&[enabled, disabled]);
+        let defs = tool_definitions(&[enabled, disabled], false);
         assert_eq!(defs.len(), 21); // 20 built-in + 1 enabled user tool
         let names: Vec<&str> = defs
             .iter()

@@ -4,6 +4,7 @@ pub mod agent_loop;
 pub mod builtin_skills;
 pub mod context;
 pub mod llm_call;
+pub mod memory;
 pub mod pending_confirmations;
 pub mod provider;
 pub mod sse;

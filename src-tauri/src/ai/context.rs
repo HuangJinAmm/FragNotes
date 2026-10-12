@@ -57,25 +57,28 @@ pub fn estimate_tokens(messages: &[Value]) -> usize {
 /// 3. 对分割点之前的消息生成 LLM 摘要，替换为一条 system 消息
 ///
 /// 摘要失败时不修改 msgs（降级为不压缩），避免阻断主流程。
+///
+/// 返回 `Ok(Some(summary))` 表示已压缩，调用方可把摘要用于长期记忆沉淀
+/// （见 `ai::memory::sediment_summary`）；`Ok(None)` 表示未触发压缩。
 pub fn maybe_compact_context(
     msgs: &mut Vec<Value>,
     provider: &ProviderConfig,
     config_store: &ConfigStore,
-) -> IpcResult<bool> {
+) -> IpcResult<Option<String>> {
     let total_tokens = estimate_tokens(msgs);
     if total_tokens <= DEFAULT_TOKEN_THRESHOLD {
-        return Ok(false);
+        return Ok(None);
     }
 
     if msgs.len() <= KEEP_RECENT_MSG_COUNT {
-        return Ok(false);
+        return Ok(None);
     }
 
     let desired_split = msgs.len() - KEEP_RECENT_MSG_COUNT;
     let split_idx = find_safe_split(msgs, desired_split);
     if split_idx == 0 {
         // 找不到安全分割点，放弃压缩
-        return Ok(false);
+        return Ok(None);
     }
 
     let to_summarize = &msgs[..split_idx];
@@ -83,13 +86,13 @@ pub fn maybe_compact_context(
 
     let conversation_text = messages_to_text(to_summarize);
     if conversation_text.is_empty() {
-        return Ok(false);
+        return Ok(None);
     }
 
     let summary = match summarize_conversation(provider, config_store, &conversation_text) {
         Ok(s) if !s.trim().is_empty() => s,
-        Ok(_) => return Ok(false), // 空摘要，放弃
-        Err(_) => return Ok(false), // 摘要失败，放弃（不阻断主流程）
+        Ok(_) => return Ok(None), // 空摘要，放弃
+        Err(_) => return Ok(None), // 摘要失败，放弃（不阻断主流程）
     };
 
     let summary_msg = json!({
@@ -101,7 +104,7 @@ pub fn maybe_compact_context(
 
     *msgs = vec![summary_msg];
     msgs.extend(recent);
-    Ok(true)
+    Ok(Some(summary))
 }
 
 /// 在 msgs 中找到安全的分割索引。
@@ -315,7 +318,7 @@ mod tests {
             json!({"role": "assistant", "content": "hello"}),
         ];
         let compacted = maybe_compact_context(&mut msgs, &provider, &config_store).unwrap();
-        assert!(!compacted);
+        assert!(compacted.is_none());
         assert_eq!(msgs.len(), 2); // 未修改
     }
 
@@ -333,6 +336,6 @@ mod tests {
         let long_content = "x".repeat(200_000);
         let mut msgs = vec![json!({"role": "user", "content": long_content})];
         let compacted = maybe_compact_context(&mut msgs, &provider, &config_store).unwrap();
-        assert!(!compacted);
+        assert!(compacted.is_none());
     }
 }

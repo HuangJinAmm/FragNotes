@@ -9,6 +9,7 @@ pub mod chat_session;
 pub mod error;
 pub mod markdown;
 pub mod memo;
+pub mod memory;
 pub mod memo_relation;
 pub mod kg_graph;
 pub mod kg_node;

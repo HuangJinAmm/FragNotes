@@ -348,6 +348,17 @@ pub fn embed(text: &str) -> IpcResult<Vec<f32>> {
     Ok(pooled)
 }
 
+/// 模型文件是否已在本地（不做任何下载）。
+///
+/// 供「不得在交互路径上触发 90MB 下载」的调用方判断：例如 AI 记忆召回只在模型已就绪时
+/// 才走语义检索，否则直接回退到关键词打分。
+pub fn is_model_available() -> bool {
+    match model_paths() {
+        Ok(p) => p.model.exists() && p.tokenizer.exists(),
+        Err(_) => false,
+    }
+}
+
 /// 生成 embedding 并序列化为 JSON 字符串（sqlite-vec 接受 JSON 格式）
 pub fn embed_to_json(text: &str) -> IpcResult<String> {
     let start = std::time::Instant::now();

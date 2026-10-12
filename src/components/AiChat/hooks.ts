@@ -6,6 +6,7 @@ import toast from "react-hot-toast";
 import { memoKeys } from "@/hooks/useMemoQueries";
 import { userKeys } from "@/hooks/useUserQueries";
 import { kgKeys } from "@/hooks/useKgQueries";
+import { memoryKeys } from "@/hooks/useMemoryQueries";
 import {
   appendMessage as persistAppendMessage,
   clearMessages as persistClearMessages,
@@ -61,6 +62,11 @@ function invalidateQueriesForTool(queryClient: QueryClient, toolName: string, re
       queryClient.invalidateQueries({ queryKey: memoKeys.lists() });
       break;
     }
+    case "remember":
+    case "forget":
+      // 内置记忆工具写库：刷新设置页的记忆列表
+      queryClient.invalidateQueries({ queryKey: memoryKeys.all });
+      break;
     case "load_skill":
       // skill 加载不修改 memo 数据，无需失效缓存
       break;
@@ -299,6 +305,15 @@ export function useAiChat({ providerId }: UseAiChatOptions) {
         }),
       );
 
+      // 对话结束后自动抽取了长期记忆：刷新设置页的记忆列表
+      unlisteners.push(
+        await listen<{ run_id: number; saved: number }>("ai:memory_saved", (e) => {
+          if (e.payload.run_id !== currentRunId.current) return;
+          queryClient.invalidateQueries({ queryKey: memoryKeys.all });
+          toast(`已记录 ${e.payload.saved} 条长期记忆`);
+        }),
+      );
+
       // 可观测性 stats：每轮 LLM 调用后推送 token 用量和工具耗时
       unlisteners.push(
         await listen<StatsPayload>("ai:stats", (e) => {
@@ -525,6 +540,8 @@ export function useAiChat({ providerId }: UseAiChatOptions) {
         const runId = await invoke<number>("ai_chat", {
           providerId,
           messages: wireMessages,
+          // 会话 id：后端用它给自动抽取/沉淀的记忆标注来源，便于设置页溯源
+          sessionId: sid,
         });
         currentRunId.current = runId;
       } catch (e) {

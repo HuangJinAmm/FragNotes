@@ -32,6 +32,10 @@ export const BUILTIN_TOOL_NAMES = [
   "create_kg_node",
   "set_kg_node_tags",
   "link_kg_nodes",
+  "fetch_url",
+  "download_file",
+  "remember",
+  "forget",
 ] as const;
 
 export const PERMISSION_LABELS: Record<ToolPermission, string> = {

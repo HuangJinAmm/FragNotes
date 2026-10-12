@@ -36,6 +36,7 @@
 - **AI 聊天面板**：多 Provider 配置（OpenAI 兼容），SSE 流式输出，支持工具调用、附件图片输入、上下文管理、会话持久化（V8 迁移）。
 - **AI Skills 机制**：内置 + 用户自定义 Skill（Markdown 指南文档），元数据始终注入系统提示，LLM 通过 `load_skill` 工具按需加载全文；内置 office-cli 系列 Skill（docx/pptx/xlsx/财务模型/学术论文等）。
 - **用户可配置工具**：用户可在设置中创建 shell 命令工具，由 AI agent 在权限等级确认机制（again/hard/good/easy）下调用执行。
+- **AI 跨会话长期记忆**：助手可跨会话记住用户偏好与稳定事实（`fact` / `preference` / `episode` 三类）。默认关闭；开启后按「关键词命中 + 语义相似度 + 重要度 + 时效 + 命中衰减」召回并注入 system prompt（受条数与字符预算双重约束），可在对话结束后自动抽取（带冲突消解：`add` / `update`），也可由助手通过 `remember` / `forget` 工具主动读写；上下文被压缩时，离场摘要会沉淀为情节记忆，避免「压缩即遗忘」。记忆存于当前工作空间，设置页可逐条启用 / 编辑 / 删除，显示来源会话并可一键跳回该对话，支持导出 / 导入 JSON 备份（幂等合并，且不并入工作空间备份）。详见 [设计文档](docs/superpowers/specs/2026-10-12-ai-memory-design.md)。
 - **本地 LLM 启动器**：通过 `llama.cpp` 的 `llama-server` 或 LM Studio 的 `lms` CLI 拉起 OpenAI 兼容的本地端点，支持前台 / 守护两种模式与开机自启。
 - **LAN 发现与分享**：基于 `iroh`（QUIC）+ mDNS，自动发现局域网内其他实例，可预览 / 复制远端笔记与附件，按需无状态查询，不做主动同步。
 - **MCP 服务器**：内置 Streamable HTTP MCP 服务端，向同机 Claude Desktop / Cline / Continue 等客户端暴露 memo CRUD 工具、`memo://{uid}` 资源与预设提示模板（`summarize_recent` / `gather_by_tag` / `review_due`）。
@@ -118,6 +119,7 @@ LocalFragNote/
 │       ├── memo.rs             # 笔记 CRUD + FTS / 向量同步
 │       ├── memo_kg_node.rs     # 笔记 ↔ 图谱节点手动关联
 │       ├── memo_relation.rs    # 笔记关系
+│       ├── memory.rs           # AI 跨会话长期记忆 CRUD + 向量索引 + 导入导出（V14 / V15 迁移）
 │       ├── migration.rs        # refinery 迁移入口
 │       ├── reaction.rs         # 反应
 │       ├── review.rs           # FSRS 复习 + KG 联动统计
@@ -170,6 +172,7 @@ LocalFragNote/
 │   │   │   ├── agent_loop.rs   # AI agent 循环 + RUNNING_COUNT 全局计数
 │   │   │   ├── builtin_skills.rs # 内置 Skill 解析器（include_str! + YAML front-matter）
 │   │   │   ├── llm_call.rs     # 共享 LLM 调用 helper（call_provider / call_first_provider）
+│   │   │   ├── memory.rs       # AI 记忆召回（build_memory_section）与自动抽取（extract_and_save）
 │   │   │   ├── pending_confirmations.rs # 用户工具权限确认（60s 超时 + 事件推送）
 │   │   │   ├── provider.rs     # 多 Provider 配置持久化
 │   │   │   ├── sse.rs          # SSE 流式解析
@@ -186,6 +189,7 @@ LocalFragNote/
 │   │   │   ├── mcp.rs          # MCP 服务器启停
 │   │   │   ├── memo.rs         # 笔记 CRUD + AI 标签建议
 │   │   │   ├── memo_relation.rs # 笔记关系
+│   │   │   ├── memory.rs       # AI 长期记忆管理（列表 / 编辑 / 开关 / 配置）
 │   │   │   ├── reaction.rs     # 反应
 │   │   │   ├── review.rs       # FSRS 复习
 │   │   │   ├── setting.rs      # 设置（走 ConfigStore）
@@ -380,6 +384,26 @@ npm run dev
 - 前端：`components/AiChat/`，多 Provider 配置，支持图片附件输入。
 - Provider 配置持久化在 `app_setting` 表中。
 
+### AI 记忆（跨会话长期记忆）
+
+完整设计见 [docs/superpowers/specs/2026-10-12-ai-memory-design.md](docs/superpowers/specs/2026-10-12-ai-memory-design.md)。
+
+| 维度 | 说明 |
+|------|------|
+| 数据表 | `ai_memory`（V14，存于 `memos.db`，随工作空间隔离）+ `ai_memory_vec`（V15，vec0 384 维）。`content_key` 归一化唯一约束实现内容去重（`upsert` 更新重要度），`source_session_id` 记录来源会话 |
+| 记忆类型 | `fact`（稳定事实）/ `preference`（用户偏好）/ `episode`（跨会话要点） |
+| 配置 | 存 `app_config.db` 的 `app_setting`：`ai_memory_enabled` / `ai_memory_auto_extract` / `ai_memory_max_items` / `ai_memory_max_chars`，**默认全部关闭** |
+| 召回 | `ai/memory.rs::build_memory_section`：关键词命中为主导（+10 起）+ 语义相似度（0..10，依赖 `ai_memory_vec` 与本地模型）+ `importance`（1..5）+ 近 30 天更新 + 命中频率加成 − 长期未命中衰减；检索词对拉丁词取整词、对 CJK 串切 bigram；按 `max_items` + `max_chars` 双重截断。**向量不可用时自动回退纯关键词** |
+| 向量 | 召回前惰性补齐缺失向量（每次 ≤ 5 条），推理期间不持有 Store 锁；设置页「重建语义索引」可批量补建（要求模型已就绪，不会触发下载） |
+| 注入 | 追加到 `SYSTEM_PROMPT` + Skill 元数据之后，独立分段标题 `## 用户记忆（跨会话）`，避免与 Skill 指令混淆 |
+| 自动抽取 | 对话结束（`ai:done` 之后）调用一次 LLM 抽取并落库，附带最相关的已有记忆做**冲突消解**（`add` / `update`，不允许 `delete`；`update` 重要度只升不降）；失败静默跳过 |
+| 压缩联动 | `context::maybe_compact_context` 返回离场摘要，`sediment_summary` 将其沉淀为情节记忆，避免「压缩即遗忘」 |
+| 溯源 | `source_session_id` 记录来源会话（`ai_chat` 新增 `session_id` 参数 → 抽取/沉淀/`remember` 工具写入）；设置页显示会话标题并可一键跳回该对话 |
+| 助手工具 | `remember` / `forget` 仅在记忆启用时加入工具列表；未启用时调用会被拒绝 |
+| 备份 | `memory_export_json` / `memory_import_json`：`fragnote-ai-memory` v1 封装格式（也可导入裸数组），幂等导入（内容重复只提升重要度，不覆盖本地启用状态与命中统计），不含本地 id / 来源会话 |
+| 管理界面 | 设置 → AI 记忆（`components/Settings/MemorySection.tsx`）：总开关 / 自动抽取 / 条数与字符预算 / 重建语义索引 / 导出导入备份 / 逐条启用编辑删除 / 清空 |
+| 隐私边界 | 记忆属用户画像，不参与 LAN 分享、MCP 工具暴露，也不并入 `export_memos_json` 的工作空间备份 —— 导出必须由用户显式触发 |
+
 ### 9. 本地 LLM 启动器
 
 - 模块：`src-tauri/src/llm_runner/`，包含 `config.rs`（持久化）与 `runner.rs`（进程管理）。
@@ -418,19 +442,33 @@ npm run dev
 
 ### memos.db（业务库）
 
-| 版本     | 文件     | 主要变更   |
-| ------ | ------ | ------ |
-| <br /> | <br /> | <br /> |
+| 版本 | 文件                                | 主要变更                   |
+| -- | --------------------------------- | ---------------------- |
+| V1 | `V1__initial_schema.sql`          | 初始 schema              |
+| V2 | `V2__add_memo_location.sql`       | 笔记位置                   |
+| V3 | `V3__add_fts_and_vector.sql`      | FTS5 + vec0 语义检索        |
+| V4 | `V4__fix_fts_triggers.sql`        | 修复 FTS 触发器             |
+| V5 | `V5__add_review_module.sql`       | FSRS 复习模块              |
+| V6 | `V6__add_tag_metadata.sql`        | 标签元数据表 + 触发器           |
+| V7 | `V7__add_memo_parent_id.sql`      | 笔记评论（`parent_id`）      |
+| V8 | `V8__add_chat_session.sql`        | AI 聊天会话持久化             |
+| V9 | `V9__add_skill.sql`               | AI Skill               |
+| V10 | `V10__add_tool.sql`               | 用户可配置工具                |
+| V11 | `V11__drop_shared_config_tables.sql` | 共享配置表迁出 memos.db       |
+| V12 | `V12__add_knowledge_graph.sql`    | 知识图谱（节点 / 标签 / 边 / 关联） |
+| V13 | `V13__add_kg_graph.sql`           | 多图谱管理                  |
+| V14 | `V14__add_ai_memory.sql`          | AI 跨会话长期记忆             |
+| V15 | `V15__add_ai_memory_vector.sql`   | AI 记忆向量索引（`ai_memory_vec`） |
 
 ### app\_config.db（共享配置库）
 
-| 版本     | 文件     | 主要变更   |
-| ------ | ------ | ------ |
-| <br /> | <br /> | <br /> |
+| 版本 | 文件                            | 主要变更                              |
+| -- | ----------------------------- | --------------------------------- |
+| V1 | `V1__initial_config_schema.sql` | `app_setting` / `instance_setting` / `tool` |
 
 关键约束：
 
-- `vec0` 虚拟表 384 维，对应 `all-MiniLM-L6-v2` 输出。
+- `vec0` 虚拟表 384 维，对应 `all-MiniLM-L6-v2` 输出（笔记用 `memo_vec`，AI 记忆用 `ai_memory_vec`，后者为可选增强、缺失时召回回退关键词）。
 - FTS5 trigram 要求 token ≥ 3 字符；短词在 `connect.ts` 中 fallback 到 LIKE。
 - `sqlite-vec` 扩展需在连接时通过 `sqlite3_auto_extension` 注册（见 `core/src/store.rs`）。
 - V11 之后，`app_setting` / `instance_setting` / `tool` 表从 `memos.db` 移到 `app_config.db`，由 `core/src/config_migration.rs` 负责首次启动时从旧库抽取迁移。
@@ -489,7 +527,7 @@ npm run tauri icon ./public/logo2.png
 
 - **wmi patched**：`vendor/wmi` 为本地补丁版本，通过 `[patch.crates-io]` 覆盖。
 - **测试**：`core/tests/crud.rs` 为核心层 CRUD 测试；`src-tauri/tests/` 覆盖 LAN auth / protocol / 集成 与 review 核心。
-- **迁移版本**：`memos.db` 当前至 V13（V8 chat\_session / V9 skill / V10 tool / V11 drop\_shared\_config\_tables / V12 knowledge\_graph / V13 kg\_graph）；`app_config.db` 至 V1。
+- **迁移版本**：`memos.db` 当前至 V15（V8 chat\_session / V9 skill / V10 tool / V11 drop\_shared\_config\_tables / V12 knowledge\_graph / V13 kg\_graph / V14 ai\_memory / V15 ai\_memory\_vec）；`app_config.db` 至 V1。
 
 ***
 

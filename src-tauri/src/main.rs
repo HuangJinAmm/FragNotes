@@ -491,6 +491,18 @@ fn main() {
             commands::chat_session::chat_list_messages,
             commands::chat_session::chat_append_message,
             commands::chat_session::chat_clear_messages,
+            // ai memory
+            commands::memory::memory_list,
+            commands::memory::memory_create,
+            commands::memory::memory_update,
+            commands::memory::memory_delete,
+            commands::memory::memory_set_enabled,
+            commands::memory::memory_clear,
+            commands::memory::memory_reindex,
+            commands::memory::memory_export_json,
+            commands::memory::memory_import_json,
+            commands::memory::memory_get_config,
+            commands::memory::memory_set_config,
             // lan discovery
             commands::lan::lan_discover_peers,
             commands::lan::lan_get_status,

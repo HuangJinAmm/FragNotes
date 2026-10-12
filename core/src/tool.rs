@@ -81,6 +81,8 @@ pub const BUILTIN_TOOL_NAMES: &[&str] = &[
     "link_kg_nodes",
     "fetch_url",
     "download_file",
+    "remember",
+    "forget",
 ];
 
 fn validate_name(name: &str) -> CoreResult<()> {

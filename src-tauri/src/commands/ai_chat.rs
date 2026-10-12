@@ -126,6 +126,14 @@ struct ContextCompactedPayload {
     after_tokens: usize,
 }
 
+/// 记忆写入事件 payload：对话结束后自动抽取了若干条长期记忆
+#[derive(Debug, Clone, Serialize)]
+struct MemorySavedPayload {
+    run_id: u32,
+    /// 本次写入（含更新）的记忆条数
+    saved: usize,
+}
+
 /// 可观测性 stats 事件 payload：每轮 LLM 调用后推送 token 用量和工具耗时
 #[derive(Debug, Clone, Serialize)]
 struct StatsPayload {
@@ -173,6 +181,8 @@ pub async fn ai_chat(
     state: tauri::State<'_, AppState>,
     provider_id: String,
     messages: Vec<ChatMessage>,
+    // 当前聊天会话 id：用于给自动抽取/沉淀的记忆标注来源会话（为 None 时不标注）
+    session_id: Option<i64>,
 ) -> IpcResult<u32> {
     let run_id = next_run_id();
     let abort_flag = Arc::new(AtomicBool::new(false));
@@ -190,7 +200,7 @@ pub async fn ai_chat(
 
     let app_handle = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        agent_loop(app_handle, run_id, provider, messages, abort_flag);
+        agent_loop(app_handle, run_id, provider, messages, abort_flag, session_id);
     });
 
     Ok(run_id)
@@ -211,6 +221,7 @@ fn agent_loop(
     provider: ProviderConfig,
     messages: Vec<ChatMessage>,
     abort_flag: Arc<AtomicBool>,
+    session_id: Option<i64>,
 ) {
     // 标记本 agent_loop 正在运行，函数退出时（含错误/abort 路径）自动递减计数器
     let _running_guard = crate::ai::agent_loop::start();
@@ -241,8 +252,21 @@ fn agent_loop(
         memos_core::tool::list_enabled(&config_store).unwrap_or_default()
     };
     let skill_metadata = build_skill_metadata_section(&skill_section);
-    let system_content = format!("{}{}", SYSTEM_PROMPT, skill_metadata);
+    // 长期记忆段：按最后一条用户消息召回；未启用或无记忆时为空串
+    let memory_section = {
+        let store = state.store();
+        let config_store = state.config_store();
+        let query = last_user_text(&msgs);
+        crate::ai::memory::build_memory_section(&store, &config_store, &query)
+    };
+    let system_content = format!("{}{}{}", SYSTEM_PROMPT, skill_metadata, memory_section);
     let system_msg = json!({"role": "system", "content": system_content});
+
+    // 记忆启用时才向 LLM 暴露 remember / forget 工具
+    let memory_enabled = {
+        let config_store = state.config_store();
+        memos_core::memory::is_enabled(&config_store)
+    };
 
     // 可观测性累加器：跨轮次累计 token 用量
     let mut accumulated_tokens: u64 = 0;
@@ -254,12 +278,13 @@ fn agent_loop(
         }
 
         // 上下文管理：每轮检查 token 用量，超阈值时自动摘要压缩历史消息
+        let mut compacted_summary: Option<String> = None;
         {
             let before_tokens = crate::ai::context::estimate_tokens(&msgs);
             let before_count = msgs.len();
             let config_store = state.config_store();
             match crate::ai::context::maybe_compact_context(&mut msgs, &provider, &config_store) {
-                Ok(true) => {
+                Ok(Some(summary)) => {
                     let after_tokens = crate::ai::context::estimate_tokens(&msgs);
                     let _ = app.emit("ai:context_compacted", ContextCompactedPayload {
                         run_id,
@@ -268,13 +293,18 @@ fn agent_loop(
                         before_tokens,
                         after_tokens,
                     });
+                    compacted_summary = Some(summary);
                 }
-                Ok(false) => {} // 未触发压缩
+                Ok(None) => {} // 未触发压缩
                 Err(e) => {
                     // 摘要失败不阻断主流程，记录日志后继续用原始 msgs
                     eprintln!("context compaction failed: {e}");
                 }
             }
+        }
+        // 把被压缩掉的历史摘要沉淀为长期记忆，避免「压缩即遗忘」
+        if let Some(summary) = compacted_summary {
+            run_memory_sediment(&app, &state, run_id, &provider, &summary, session_id);
         }
 
         // 构造请求 messages：system + 用户对话
@@ -285,7 +315,7 @@ fn agent_loop(
             "model": provider.model,
             "messages": req_messages,
             "stream": true,
-            "tools": tool_definitions(&user_tools),
+            "tools": tool_definitions(&user_tools, memory_enabled),
         });
 
         let url = format!("{}/chat/completions", provider.base_url.trim_end_matches('/'));
@@ -374,6 +404,8 @@ fn agent_loop(
                 rounds_completed: round + 1,
             });
             let _ = app.emit("ai:done", DonePayload { run_id });
+            // 记忆抽取放在 ai:done 之后：额外的 LLM 调用不会拖慢对话结束
+            run_memory_extraction(&app, &state, run_id, &provider, &msgs, session_id);
             cleanup_abort(run_id);
             return;
         }
@@ -411,7 +443,7 @@ fn agent_loop(
             let tool_start = Instant::now();
             let result = {
                 let store = state.store();
-                execute_tool(&tc.name, &args, &store, &state.builtin_skills, &state)
+                execute_tool(&tc.name, &args, &store, &state.builtin_skills, &state, session_id)
             };
             let elapsed_ms = tool_start.elapsed().as_millis() as u64;
             tool_timings.push((tc.name.clone(), elapsed_ms));
@@ -480,6 +512,64 @@ fn agent_loop(
 
 fn cleanup_abort(run_id: u32) {
     ABORTS.lock().unwrap().remove(&run_id);
+}
+
+/// 取最后一条用户消息的文本，作为记忆召回的相关性查询
+fn last_user_text(msgs: &[Value]) -> String {
+    msgs.iter()
+        .rev()
+        .find(|m| m.get("role").and_then(|r| r.as_str()) == Some("user"))
+        .and_then(|m| m.get("content"))
+        .map(|c| match c {
+            // vision 消息的 content 是数组，退化为 JSON 文本参与匹配
+            Value::String(s) => s.clone(),
+            other => other.to_string(),
+        })
+        .unwrap_or_default()
+}
+
+/// 上下文压缩后把离场摘要沉淀为长期记忆；未开启或失败时静默跳过
+fn run_memory_sediment(
+    app: &AppHandle,
+    state: &AppState,
+    run_id: u32,
+    provider: &ProviderConfig,
+    summary: &str,
+    session_id: Option<i64>,
+) {
+    let config_store = state.config_store();
+    if !crate::ai::memory::auto_extract_enabled(&config_store) {
+        return;
+    }
+    let saved = {
+        let store = state.store();
+        crate::ai::memory::sediment_summary(provider, &store, &config_store, summary, session_id)
+    };
+    if saved > 0 {
+        let _ = app.emit("ai:memory_saved", MemorySavedPayload { run_id, saved });
+    }
+}
+
+/// 对话结束后自动抽取记忆并落库；未开启或失败时静默跳过
+fn run_memory_extraction(
+    app: &AppHandle,
+    state: &AppState,
+    run_id: u32,
+    provider: &ProviderConfig,
+    msgs: &[Value],
+    session_id: Option<i64>,
+) {
+    let config_store = state.config_store();
+    if !crate::ai::memory::auto_extract_enabled(&config_store) {
+        return;
+    }
+    let saved = {
+        let store = state.store();
+        crate::ai::memory::extract_and_save(provider, &store, &config_store, msgs, session_id)
+    };
+    if saved > 0 {
+        let _ = app.emit("ai:memory_saved", MemorySavedPayload { run_id, saved });
+    }
 }
 
 fn format_http_error(e: ureq::Error) -> String {
